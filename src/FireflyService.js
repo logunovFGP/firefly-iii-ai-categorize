@@ -28,7 +28,7 @@ export default class FireflyService {
             }
 
             const contentType = response.headers.get("content-type") || "";
-            if (!contentType.includes("application/json")) {
+            if (!contentType.includes("json")) {
                 throw new FireflyException(200, response, "Firefly returned HTML instead of JSON. Check your Personal Access Token — it may be invalid or expired.");
             }
 
