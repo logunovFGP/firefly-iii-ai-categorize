@@ -843,7 +843,15 @@ $('#analyze-btn').addEventListener('click', async () => {
     try {
         const result = await streamSSE('/api/batch/analyze', 'POST', undefined, (p) => {
             if (p.lastError) errors.push(p.lastError);
-            renderProgress('analyze-progress', { ...p, elapsed: Date.now() - startTime });
+            if (p.phase === 'fetching') {
+                renderProgress('analyze-progress', {
+                    processed: p.page || 0, total: p.totalPages || 1,
+                    current: p.fetchedSoFar ? `Fetching page ${p.page} of ${p.totalPages} (${p.fetchedSoFar} transactions)` : (p.message || 'Fetching...'),
+                    elapsed: Date.now() - startTime
+                });
+            } else {
+                renderProgress('analyze-progress', { ...p, elapsed: Date.now() - startTime });
+            }
         });
 
         STATE.analysisResult = result;

@@ -124,7 +124,7 @@ export default class FireflyService {
         return await response.json();
     }
 
-    async getUncategorizedTransactions() {
+    async getUncategorizedTransactions(onPageFetched = null) {
         const personalToken = this.#configStore.getValue("FIREFLY_PERSONAL_TOKEN", { required: true });
         const results = [];
         let page = 1;
@@ -147,6 +147,7 @@ export default class FireflyService {
                 results.push(txn);
             }
 
+            if (onPageFetched) onPageFetched({ page, totalPages, fetchedSoFar: results.length });
             page++;
         }
 

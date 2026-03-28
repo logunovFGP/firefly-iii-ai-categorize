@@ -95,6 +95,11 @@ export default class ConfigStore {
         await this.#savePlainConfig();
     }
 
+    getBatchClassifySize() {
+        const val = parseInt(this.#config.BATCH_CLASSIFY_SIZE ?? process.env.BATCH_CLASSIFY_SIZE ?? "20");
+        return Math.max(1, Math.min(50, isNaN(val) ? 20 : val));
+    }
+
     getEnableWebhook() {
         const val = this.#config.ENABLE_WEBHOOK ?? process.env.ENABLE_WEBHOOK ?? "true";
         return String(val).toLowerCase() === "true";

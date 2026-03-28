@@ -11,22 +11,29 @@ export default class OpenAiProvider extends AiProvider {
 
     async classify(categories, destinationName, description, examples = []) {
         const prompt = this._generatePrompt(categories, destinationName, description, examples);
-
         const response = await this.#client.chat.completions.create({
             model: this._model,
             messages: [{ role: "user", content: prompt }],
             temperature: 0.1,
             max_tokens: 50,
         });
-
         const guess = response.choices[0].message.content.trim();
         const category = categories.includes(guess) ? guess : null;
-
-        if (!category) {
-            console.warn(`OpenAI could not classify. Model: ${this._model}, Guess: "${guess}"`);
-        }
-
+        if (!category) console.warn(`OpenAI could not classify. Model: ${this._model}, Guess: "${guess}"`);
         return { prompt, response: guess, category };
+    }
+
+    async classifyBatch(categories, transactions, examples = []) {
+        const prompt = this._generateBatchPrompt(categories, transactions, examples);
+        const response = await this.#client.chat.completions.create({
+            model: this._model,
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.1,
+            max_tokens: Math.max(100, transactions.length * 30),
+            response_format: { type: "json_object" },
+        });
+        const raw = response.choices[0].message.content.trim();
+        return this._parseBatchResponse(raw, categories, transactions);
     }
 
     async testConnection() {

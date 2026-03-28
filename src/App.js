@@ -68,6 +68,7 @@ export default class App {
             classificationEngine: this.#engine,
             merchantMemory: this.#merchantMemory,
             jobList: this.#jobList,
+            configStore: this.#configStore,
         });
 
         // Queue
