@@ -1,2 +1,8 @@
 .idea
 node_modules
+storage/local-settings.json
+storage/local-settings.enc.json
+storage/.master_key
+storage/categorizer.db
+storage/categorizer.db-shm
+storage/categorizer.db-wal

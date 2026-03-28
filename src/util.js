@@ -8,6 +8,15 @@ class MissingEnvironmentVariableException extends Error {
     }
 }
 
+export function normalizeMerchantName(name) {
+    if (!name) return "";
+    return name
+        .trim()
+        .replace(/\s+/g, " ")
+        .replace(/\s*[*#]\s*[\d]+$/g, "")
+        .toUpperCase();
+}
+
 export function getConfigVariable(name, defaultValue = null) {
     if (!process.env.hasOwnProperty(name) || process.env[name] == null) {
         if (defaultValue == null) {
