@@ -38,7 +38,11 @@ export default class AiProvider {
         }
     }
 
-    static get SYSTEM_PROMPT() {
+    static get SYSTEM_PROMPT_SINGLE() {
+        return 'You are a bank transaction categorizer. Reply with ONLY the category name, nothing else. No quotes, no JSON, no explanation. Correct: Groceries. Wrong: "Groceries". Wrong: {"category":"Groceries"}. If uncertain, reply: UNKNOWN';
+    }
+
+    static get SYSTEM_PROMPT_BATCH() {
         return "You are a bank transaction categorizer. Reply with valid JSON only. Use ONLY category names from the allowed list. Use null for uncertain. No markdown, no explanation, no extra text.";
     }
 

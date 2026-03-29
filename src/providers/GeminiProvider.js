@@ -14,10 +14,10 @@ export default class GeminiProvider extends AiProvider {
         return this._withRetry(async () => {
             const model = this.#genAI.getGenerativeModel({
                 model: this._model,
-                systemInstruction: AiProvider.SYSTEM_PROMPT,
+                systemInstruction: AiProvider.SYSTEM_PROMPT_SINGLE,
             });
             const result = await model.generateContent(prompt);
-            const guess = result.response.text().trim();
+            const guess = result.response.text().trim().replace(/^["']|["']$/g, "");
             const category = categories.includes(guess)
                 ? guess
                 : categories.find(c => c.toLowerCase() === guess.toLowerCase()) || null;
@@ -31,7 +31,7 @@ export default class GeminiProvider extends AiProvider {
         return this._withRetry(async () => {
             const model = this.#genAI.getGenerativeModel({
                 model: this._model,
-                systemInstruction: AiProvider.SYSTEM_PROMPT,
+                systemInstruction: AiProvider.SYSTEM_PROMPT_BATCH,
                 generationConfig: { responseMimeType: "application/json" },
             });
             const result = await model.generateContent(prompt);

@@ -15,13 +15,13 @@ export default class OpenAiProvider extends AiProvider {
             const response = await this.#client.chat.completions.create({
                 model: this._model,
                 messages: [
-                    { role: "system", content: AiProvider.SYSTEM_PROMPT },
+                    { role: "system", content: AiProvider.SYSTEM_PROMPT_SINGLE },
                     { role: "user", content: prompt },
                 ],
                 temperature: 0.1,
                 max_tokens: 50,
             });
-            const guess = response.choices[0].message.content.trim();
+            const guess = response.choices[0].message.content.trim().replace(/^["']|["']$/g, "");
             const category = categories.includes(guess)
                 ? guess
                 : categories.find(c => c.toLowerCase() === guess.toLowerCase()) || null;
@@ -36,7 +36,7 @@ export default class OpenAiProvider extends AiProvider {
             const response = await this.#client.chat.completions.create({
                 model: this._model,
                 messages: [
-                    { role: "system", content: AiProvider.SYSTEM_PROMPT },
+                    { role: "system", content: AiProvider.SYSTEM_PROMPT_BATCH },
                     { role: "user", content: prompt },
                 ],
                 temperature: 0.1,
