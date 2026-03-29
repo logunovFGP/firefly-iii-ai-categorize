@@ -18,6 +18,14 @@ export default class CategoriesCache {
         return this.#cache;
     }
 
+    async ensureCategory(name) {
+        const categories = await this.getCategories();
+        if (categories.has(name)) return categories.get(name);
+        await this.#fireflyService.createCategory(name);
+        this.invalidate();
+        return (await this.getCategories()).get(name) || null;
+    }
+
     invalidate() {
         this.#cache = null;
         this.#cachedAt = 0;

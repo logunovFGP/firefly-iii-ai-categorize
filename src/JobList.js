@@ -65,14 +65,14 @@ export default class JobList {
             data.fireflyTransactionId || null
         );
         const job = this.#stmts.get.get(id);
-        this.#eventEmitter.emit("job created", { job, jobs: this.getJobs() });
+        this.#eventEmitter.emit("job created", { job });
         return job;
     }
 
     setJobInProgress(id) {
         this.#stmts.setStatus.run("in_progress", id);
         const job = this.#stmts.get.get(id);
-        this.#eventEmitter.emit("job updated", { job, jobs: this.getJobs() });
+        this.#eventEmitter.emit("job updated", { job });
     }
 
     updateJobResult(id, result) {
@@ -91,20 +91,20 @@ export default class JobList {
             id
         );
         const job = this.#stmts.get.get(id);
-        this.#eventEmitter.emit("job updated", { job, jobs: this.getJobs() });
+        this.#eventEmitter.emit("job updated", { job });
         return job;
     }
 
     setJobError(id, errorMessage) {
         this.#stmts.setError.run(errorMessage, new Date().toISOString(), id);
         const job = this.#stmts.get.get(id);
-        this.#eventEmitter.emit("job updated", { job, jobs: this.getJobs() });
+        this.#eventEmitter.emit("job updated", { job });
     }
 
     correctJob(id, category) {
         this.#stmts.correct.run(category, id);
         const job = this.#stmts.get.get(id);
-        this.#eventEmitter.emit("job updated", { job, jobs: this.getJobs() });
+        this.#eventEmitter.emit("job updated", { job });
         return job;
     }
 }

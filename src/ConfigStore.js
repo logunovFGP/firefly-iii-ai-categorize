@@ -105,6 +105,21 @@ export default class ConfigStore {
         return Math.max(1, Math.min(50, isNaN(val) ? 20 : val));
     }
 
+    getCryptoCategory() {
+        return this.#str(this.#config.CRYPTO_CATEGORY) || process.env.CRYPTO_CATEGORY || "Crypto";
+    }
+
+    getCryptoTokenCategories() {
+        const raw = this.#str(this.#config.CRYPTO_TOKEN_CATEGORIES) || process.env.CRYPTO_TOKEN_CATEGORIES || "";
+        if (!raw) return {};
+        const result = {};
+        for (const pair of raw.split(",")) {
+            const [symbol, category] = pair.split(":").map(s => s.trim());
+            if (symbol && category) result[symbol.toUpperCase()] = category;
+        }
+        return result;
+    }
+
     getEnableWebhook() {
         const val = this.#config.ENABLE_WEBHOOK ?? process.env.ENABLE_WEBHOOK ?? "true";
         return String(val).toLowerCase() === "true";

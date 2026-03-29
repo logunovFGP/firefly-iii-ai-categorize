@@ -1,3 +1,5 @@
+import { matchCategory } from "../util.js";
+
 export default class AiProvider {
     constructor(apiKey, model) {
         if (new.target === AiProvider) {
@@ -115,9 +117,7 @@ export default class AiProvider {
             if (!guess || guess === "null" || guess === null || guess === "UNKNOWN") {
                 return { category: null, response: guess };
             }
-            const matched = categories.includes(guess)
-                ? guess
-                : categories.find(c => c.toLowerCase() === guess.toLowerCase()) || null;
+            const matched = matchCategory(guess, categories);
             return { category: matched, response: guess };
         });
     }

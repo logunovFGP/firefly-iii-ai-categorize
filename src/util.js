@@ -55,6 +55,13 @@ export function mergeProposals(proposals, mergeMap) {
     });
 }
 
+export function matchCategory(guess, categoryList) {
+    if (!guess || typeof guess !== 'string') return null;
+    if (categoryList.includes(guess)) return guess;
+    const lower = guess.toLowerCase();
+    return categoryList.find(c => c.toLowerCase() === lower) || null;
+}
+
 export function getConfigVariable(name, defaultValue = null) {
     if (!process.env.hasOwnProperty(name) || process.env[name] == null) {
         if (defaultValue == null) {

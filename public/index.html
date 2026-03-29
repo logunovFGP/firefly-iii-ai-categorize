@@ -1049,8 +1049,14 @@ function renderJobs(jobs) {
 }
 $('#job-filter').addEventListener('change', () => renderJobs(STATE.allJobs));
 socket.on('jobs', jobs => { STATE.allJobs = jobs; renderJobs(jobs); });
-socket.on('job created', e => { STATE.allJobs = e.jobs; renderJobs(STATE.allJobs); });
-socket.on('job updated', e => { STATE.allJobs = e.jobs; renderJobs(STATE.allJobs); });
+socket.on('job created', e => {
+    if (e.job) { STATE.allJobs = [e.job, ...STATE.allJobs.filter(j => j.id !== e.job.id)]; }
+    renderJobs(STATE.allJobs);
+});
+socket.on('job updated', e => {
+    if (e.job) { STATE.allJobs = STATE.allJobs.map(j => j.id === e.job.id ? e.job : j); }
+    renderJobs(STATE.allJobs);
+});
 
 // ─── Memory ───────────────────────────────
 async function loadMemory() {

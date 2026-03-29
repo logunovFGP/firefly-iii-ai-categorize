@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import AiProvider from "./AiProvider.js";
+import { matchCategory } from "../util.js";
 
 export default class GeminiProvider extends AiProvider {
     #genAI;
@@ -27,9 +28,7 @@ export default class GeminiProvider extends AiProvider {
                     if (!parsed || typeof parsed !== "object") return null;
                     const guess = parsed.category;
                     if (guess === null || guess === undefined) return { category: null, response: null, prompt: basePrompt };
-                    const matched = categories.includes(guess)
-                        ? guess
-                        : categories.find(c => c.toLowerCase() === guess.toLowerCase()) || null;
+                    const matched = matchCategory(guess, categories);
                     if (!matched) console.warn(`Gemini: "${guess}" not in categories`);
                     return { category: matched, response: guess, prompt: basePrompt };
                 }

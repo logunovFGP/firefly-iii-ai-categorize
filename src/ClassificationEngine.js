@@ -1,104 +1,110 @@
-import { createProvider, PROVIDER_MODELS } from "./providers/ProviderRegistry.js";
+import { createProvider } from "./providers/ProviderRegistry.js";
+import { matchCategory } from "./util.js";
 
 export default class ClassificationEngine {
     #keywordRules;
     #merchantMemory;
     #configStore;
     #categoriesCache;
+    #cryptoDetector;
+    #cachedProvider = null;
+    #cachedProviderKey = "";
 
-    constructor(keywordRules, merchantMemory, configStore, categoriesCache) {
+    constructor(keywordRules, merchantMemory, configStore, categoriesCache, cryptoDetector = null) {
         this.#keywordRules = keywordRules;
         this.#merchantMemory = merchantMemory;
         this.#configStore = configStore;
         this.#categoriesCache = categoriesCache;
+        this.#cryptoDetector = cryptoDetector;
+    }
+
+    #getProvider() {
+        const { provider: providerName, model } = this.#configStore.getActiveProvider();
+        const apiKey = this.#configStore.getProviderToken(providerName);
+        if (!apiKey) return null;
+
+        const key = `${providerName}:${model}:${apiKey.slice(-8)}`;
+        if (this.#cachedProvider && this.#cachedProviderKey === key) {
+            return this.#cachedProvider;
+        }
+
+        this.#cachedProvider = createProvider(providerName, apiKey, model);
+        this.#cachedProviderKey = key;
+        return this.#cachedProvider;
+    }
+
+    #preFilter(destinationName, description, categories) {
+        // Stage 1: Keyword rules
+        const ruleMatch = this.#keywordRules.match(destinationName, description);
+        if (ruleMatch && categories.has(ruleMatch.category)) {
+            return { category: ruleMatch.category, categoryId: categories.get(ruleMatch.category), confidence: 1.0, source: `rule:${ruleMatch.matchedKeyword}`, needsReview: false };
+        }
+
+        // Stage 1.5: Crypto static detection
+        if (this.#cryptoDetector) {
+            const cryptoMatch = this.#cryptoDetector.detect(destinationName, description);
+            if (cryptoMatch) {
+                return { ...cryptoMatch, categoryId: categories.get(cryptoMatch.category) || null, _ensureCrypto: !categories.has(cryptoMatch.category) };
+            }
+        }
+
+        // Stage 2: Merchant memory
+        const memHit = this.#merchantMemory.lookup(destinationName);
+        if (memHit && categories.has(memHit.category)) {
+            return { category: memHit.category, categoryId: memHit.category_id, confidence: memHit.corrected ? 1.0 : 0.95, source: memHit.corrected ? "memory:corrected" : "memory:learned", needsReview: false };
+        }
+
+        return null;
     }
 
     async classify(destinationName, description, { dryRun = false } = {}) {
         const categories = await this.#categoriesCache.getCategories();
         const categoryNames = Array.from(categories.keys());
 
-        // Stage 1: Keyword rules (instant, no API call)
-        const ruleMatch = this.#keywordRules.match(destinationName, description);
-        if (ruleMatch && categories.has(ruleMatch.category)) {
-            return {
-                category: ruleMatch.category,
-                categoryId: categories.get(ruleMatch.category),
-                confidence: 1.0,
-                source: `rule:${ruleMatch.matchedKeyword}`,
-                needsReview: false,
-            };
+        // Pre-filter: rules → crypto → memory
+        const preResult = this.#preFilter(destinationName, description, categories);
+        if (preResult) {
+            if (preResult._ensureCrypto) {
+                await this.#categoriesCache.ensureCategory(preResult.category);
+                preResult.categoryId = (await this.#categoriesCache.getCategories()).get(preResult.category) || null;
+            }
+            delete preResult._ensureCrypto;
+            return preResult;
         }
 
-        // Stage 2: Merchant memory (instant, SQLite lookup)
-        const memHit = this.#merchantMemory.lookup(destinationName);
-        if (memHit && categories.has(memHit.category)) {
-            return {
-                category: memHit.category,
-                categoryId: memHit.category_id,
-                confidence: memHit.corrected ? 1.0 : 0.95,
-                source: memHit.corrected ? "memory:corrected" : "memory:learned",
-                needsReview: false,
-            };
-        }
-
-        // Stage 3: AI classification (API call)
+        // Stage 3: AI classification
         const { provider: providerName, model } = this.#configStore.getActiveProvider();
-        const providerDef = PROVIDER_MODELS[providerName];
-        if (!providerDef) {
-            return { category: null, confidence: 0, source: "error:unknown-provider", needsReview: true };
-        }
-
-        const apiKey = this.#configStore.getProviderToken(providerName);
-        if (!apiKey) {
+        const provider = this.#getProvider();
+        if (!provider) {
             return { category: null, confidence: 0, source: "error:no-api-key", needsReview: true };
         }
 
         let result;
         try {
-            const provider = createProvider(providerName, apiKey, model);
             const examples = this.#merchantMemory.getExamples(5);
             result = await provider.classify(categoryNames, destinationName, description, examples);
         } catch (error) {
             console.error(`AI classification failed: ${error.message}`);
-            return {
-                category: null,
-                confidence: 0,
-                source: `ai:${providerName}/${model}`,
-                needsReview: true,
-                error: error.message,
-            };
+            return { category: null, confidence: 0, source: `ai:${providerName}/${model}`, needsReview: true, error: error.message };
         }
 
-        // Try exact match first, then case-insensitive match
-        let matchedCategory = result.category && categoryNames.includes(result.category)
-            ? result.category
-            : null;
-
-        if (!matchedCategory && result.category) {
-            const lower = result.category.toLowerCase();
-            matchedCategory = categoryNames.find(c => c.toLowerCase() === lower) || null;
-        }
-
-        const confidence = matchedCategory ? 0.85 : 0;
+        const matched = matchCategory(result.category, categoryNames);
+        const confidence = matched ? 0.85 : 0;
         const threshold = this.#configStore.getConfidenceThreshold();
-        const accepted = matchedCategory && confidence >= threshold;
+        const accepted = matched && confidence >= threshold;
 
         if (accepted && !dryRun) {
             this.#merchantMemory.learn(destinationName, {
-                category: matchedCategory,
-                categoryId: categories.get(matchedCategory),
-                confidence,
-                source: `ai:${providerName}/${model}`,
+                category: matched, categoryId: categories.get(matched),
+                confidence, source: `ai:${providerName}/${model}`,
             });
         }
 
         return {
-            category: accepted ? matchedCategory : null,
-            categoryId: accepted ? categories.get(matchedCategory) : null,
-            confidence,
-            source: `ai:${providerName}/${model}`,
-            prompt: result.prompt,
-            response: result.response,
+            category: accepted ? matched : null,
+            categoryId: accepted ? categories.get(matched) : null,
+            confidence, source: `ai:${providerName}/${model}`,
+            prompt: result.prompt, response: result.response,
             needsReview: !accepted && confidence > 0,
         };
     }
@@ -110,27 +116,29 @@ export default class ClassificationEngine {
 
         const results = new Map();
         const needsAI = [];
+        const cryptoEnsureSet = new Set();
 
         for (const t of transactionList) {
-            const ruleMatch = this.#keywordRules.match(t.destinationName, t.description);
-            if (ruleMatch && categories.has(ruleMatch.category)) {
-                results.set(t, { category: ruleMatch.category, categoryId: categories.get(ruleMatch.category), confidence: 1.0, source: `rule:${ruleMatch.matchedKeyword}`, needsReview: false });
-                continue;
-            }
-            const memHit = this.#merchantMemory.lookup(t.destinationName);
-            if (memHit && categories.has(memHit.category)) {
-                results.set(t, { category: memHit.category, categoryId: memHit.category_id, confidence: memHit.corrected ? 1.0 : 0.95, source: memHit.corrected ? "memory:corrected" : "memory:learned", needsReview: false });
+            const preResult = this.#preFilter(t.destinationName, t.description, categories);
+            if (preResult) {
+                if (preResult._ensureCrypto) cryptoEnsureSet.add(preResult.category);
+                delete preResult._ensureCrypto;
+                results.set(t, preResult);
                 continue;
             }
             needsAI.push(t);
         }
 
+        // Ensure crypto categories exist
+        for (const catName of cryptoEnsureSet) {
+            await this.#categoriesCache.ensureCategory(catName);
+        }
+
         if (needsAI.length > 0) {
             const { provider: providerName, model } = this.#configStore.getActiveProvider();
-            const apiKey = this.#configStore.getProviderToken(providerName);
+            const provider = this.#getProvider();
 
-            if (apiKey) {
-                const provider = createProvider(providerName, apiKey, model);
+            if (provider) {
                 const examples = this.#merchantMemory.getExamples(5);
 
                 try {
@@ -138,7 +146,7 @@ export default class ClassificationEngine {
 
                     batchResults.forEach((r, i) => {
                         const t = needsAI[i];
-                        const matched = r.category;
+                        const matched = matchCategory(r.category, categoryNames);
                         const confidence = matched ? 0.85 : 0;
                         const accepted = matched && confidence >= threshold;
 

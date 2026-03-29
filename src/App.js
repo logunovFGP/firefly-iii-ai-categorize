@@ -1,4 +1,6 @@
 import express from "express";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { Server } from "socket.io";
 import * as http from "http";
 import Queue from "queue";
@@ -11,6 +13,7 @@ import ConfigStore, { ConfigStoreException } from "./ConfigStore.js";
 import FireflyService from "./FireflyService.js";
 import CategoriesCache from "./CategoriesCache.js";
 import KeywordRules from "./KeywordRules.js";
+import CryptoDetector from "./CryptoDetector.js";
 import MerchantMemory from "./MerchantMemory.js";
 import ClassificationEngine from "./ClassificationEngine.js";
 import BatchAnalyzer from "./BatchAnalyzer.js";
@@ -58,8 +61,9 @@ export default class App {
         this.#categoriesCache = new CategoriesCache(this.#firefly, 60_000);
         this.#merchantMemory = new MerchantMemory(this.#database);
         this.#keywordRules = new KeywordRules(this.#configStore.getKeywordRules());
+        const cryptoDetector = new CryptoDetector(this.#configStore);
         this.#engine = new ClassificationEngine(
-            this.#keywordRules, this.#merchantMemory, this.#configStore, this.#categoriesCache
+            this.#keywordRules, this.#merchantMemory, this.#configStore, this.#categoriesCache, cryptoDetector
         );
         this.#jobList = new JobList(this.#database);
         this.#batchAnalyzer = new BatchAnalyzer({
@@ -82,7 +86,10 @@ export default class App {
         this.#express = express();
         this.#server = http.createServer(this.#express);
         this.#io = new Server(this.#server);
-        this.#express.use(express.json());
+        this.#express.use(express.json({ limit: "1mb" }));
+        this.#express.use(helmet({ contentSecurityPolicy: false }));
+        const webhookLimiter = rateLimit({ windowMs: 60000, max: 60, message: { error: "Too many webhook requests" } });
+        const batchLimiter = rateLimit({ windowMs: 60000, max: 10, message: { error: "Too many batch requests" } });
 
         if (this.#ENABLE_UI) {
             this.#express.use("/", express.static("public"));
@@ -124,16 +131,11 @@ export default class App {
         this.#express.post("/api/jobs/:id/correct", this.#correctJob.bind(this));
 
         // --- API: Batch (two-pass) ---
-        this.#express.post("/api/batch/analyze", this.#batchAnalyze.bind(this));
-        this.#express.post("/api/batch/apply", this.#batchApply.bind(this));
+        this.#express.post("/api/batch/analyze", batchLimiter, this.#batchAnalyze.bind(this));
+        this.#express.post("/api/batch/apply", batchLimiter, this.#batchApply.bind(this));
 
-        // --- Webhook (conditional) ---
-        if (this.#configStore.getEnableWebhook()) {
-            this.#express.post("/webhook", this.#onWebhook.bind(this));
-            console.log("Webhook endpoint enabled");
-        } else {
-            console.log("Webhook endpoint disabled (ENABLE_WEBHOOK=false)");
-        }
+        // --- Webhook ---
+        this.#express.post("/webhook", webhookLimiter, this.#onWebhook.bind(this));
 
         // Start
         this.#server.listen(this.#PORT, () => {
@@ -429,6 +431,9 @@ export default class App {
     // ─── Webhook ─────────────────────────────────────
 
     #onWebhook(req, res) {
+        if (!this.#configStore.getEnableWebhook()) {
+            return res.status(503).json({ error: "Webhook is disabled" });
+        }
         try {
             this.#handleWebhook(req);
             res.send("Queued");
@@ -450,6 +455,10 @@ export default class App {
         }
         if (!req.body?.content?.transactions?.length) {
             throw new Error("No transactions in content.transactions");
+        }
+
+        if (req.body.content.transactions.length > 1) {
+            console.warn(`Webhook: transaction group has ${req.body.content.transactions.length} splits, processing first only`);
         }
 
         const txn = req.body.content.transactions[0];
