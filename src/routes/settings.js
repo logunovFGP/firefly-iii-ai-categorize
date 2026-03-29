@@ -6,22 +6,12 @@ export default function settingsRoutes({ configStore, secretStore, categoriesCac
     const state = { fireflyStatus };
 
     function handleError(res, error) {
-        const { ConfigStoreException } = configStore.constructor;
         if (error?.statusCode) {
             return res.status(error.statusCode).json({ error: error.message });
         }
         console.error(error);
         res.status(500).json({ error: error.message });
     }
-
-    router.get("/setup-status", (req, res) => {
-        const apiTokenConfigured = !!configStore.getValue("CATEGORIZER_API_TOKEN");
-        const hasFireflyToken = !!configStore.getValue("FIREFLY_PERSONAL_TOKEN");
-        const { provider } = configStore.getActiveProvider();
-        const hasAiProvider = !!configStore.getProviderToken(provider);
-
-        res.json({ apiTokenRequired: apiTokenConfigured, hasFireflyToken, hasAiProvider });
-    });
 
     router.get("/settings", (req, res) => {
         const settings = configStore.getPublicSettings();
