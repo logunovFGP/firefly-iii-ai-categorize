@@ -51,10 +51,11 @@ export default class BatchAnalyzer {
             batches.push(toClassify.slice(i, i + batchSize));
         }
 
-        if (onProgress) onProgress({ phase: "classifying", processed, total, skipped, errors: 0, current: `${toClassify.length} txns in ${batches.length} batches (${concurrency} parallel)` });
-
-        // Growing category set
+        // Growing category set — starts from Firefly DB categories
         const knownCategories = new Set(categories.keys());
+        const initialCategoryList = Array.from(categories.keys()).sort();
+
+        if (onProgress) onProgress({ phase: "classifying", processed, total, skipped, errors: 0, current: `${toClassify.length} txns in ${batches.length} batches (${concurrency} parallel)`, vocabulary: { initial: initialCategoryList, current: initialCategoryList } });
 
         const processChunkResults = (batchResults, chunk) => {
             batchResults.forEach((result, j) => {
@@ -98,7 +99,7 @@ export default class BatchAnalyzer {
                 if (onProgress) onProgress({ phase: "classifying", processed: processed + (i + 1) * batchSize, total, skipped, errors: errorCount, lastError: err.message, current: `Seed batch ${i + 1}/${seedCount}` });
             }
             processed += chunk.length;
-            if (onProgress) onProgress({ phase: "classifying", processed, total, skipped, errors: errorCount, current: `Seed ${i + 1}/${seedCount} (vocabulary: ${knownCategories.size} categories)` });
+            if (onProgress) onProgress({ phase: "classifying", processed, total, skipped, errors: errorCount, current: `Seed ${i + 1}/${seedCount}`, vocabulary: { initial: initialCategoryList, current: [...knownCategories].sort() } });
         }
 
         // Phase B: Parallel remaining batches
@@ -120,7 +121,7 @@ export default class BatchAnalyzer {
                 }
                 processed += chunk.length;
                 completedParallel++;
-                if (onProgress) onProgress({ phase: "classifying", processed, total, skipped, errors: errorCount, current: `Parallel ${completedParallel}/${remaining.length} (${concurrency} workers)` });
+                if (onProgress) onProgress({ phase: "classifying", processed, total, skipped, errors: errorCount, current: `Parallel ${completedParallel}/${remaining.length} (${concurrency} workers)`, vocabulary: { initial: initialCategoryList, current: [...knownCategories].sort() } });
             });
         }
 

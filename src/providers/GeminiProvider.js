@@ -10,19 +10,31 @@ export default class GeminiProvider extends AiProvider {
     }
 
     async classify(categories, destinationName, description, examples = []) {
-        const prompt = this._generatePrompt(categories, destinationName, description, examples);
+        const basePrompt = this._generatePrompt(categories, destinationName, description, examples);
         return this._withRetry(async () => {
-            const model = this.#genAI.getGenerativeModel({
-                model: this._model,
-                systemInstruction: AiProvider.SYSTEM_PROMPT_SINGLE,
-            });
-            const result = await model.generateContent(prompt);
-            const guess = result.response.text().trim().replace(/^["']|["']$/g, "");
-            const category = categories.includes(guess)
-                ? guess
-                : categories.find(c => c.toLowerCase() === guess.toLowerCase()) || null;
-            if (!category) console.warn(`Gemini: "${guess}" not in categories`);
-            return { prompt, response: guess, category };
+            const result = await this._callWithJsonRetry(
+                async (errorCtx) => {
+                    const fullPrompt = errorCtx ? `${basePrompt}\n\nFix: ${errorCtx}` : basePrompt;
+                    const model = this.#genAI.getGenerativeModel({
+                        model: this._model,
+                        systemInstruction: AiProvider.SYSTEM_PROMPT_SINGLE,
+                        generationConfig: { responseMimeType: "application/json" },
+                    });
+                    const r = await model.generateContent(fullPrompt);
+                    return r.response.text();
+                },
+                (parsed) => {
+                    if (!parsed || typeof parsed !== "object") return null;
+                    const guess = parsed.category;
+                    if (guess === null || guess === undefined) return { category: null, response: null, prompt: basePrompt };
+                    const matched = categories.includes(guess)
+                        ? guess
+                        : categories.find(c => c.toLowerCase() === guess.toLowerCase()) || null;
+                    if (!matched) console.warn(`Gemini: "${guess}" not in categories`);
+                    return { category: matched, response: guess, prompt: basePrompt };
+                }
+            );
+            return result || { category: null, response: null, prompt: basePrompt };
         });
     }
 

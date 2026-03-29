@@ -151,6 +151,13 @@
         .auth-box { background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--sp-8); max-width: 400px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
         .auth-box h2 { margin: 0 0 var(--sp-4) 0; font-size: 1.1rem; }
 
+        .vocab-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; font-size: 0.7rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); overflow: hidden; margin-top: var(--sp-2); background: var(--color-border); }
+        .vocab-col-header { background: var(--color-bg); padding: var(--sp-1) var(--sp-2); font-weight: 600; color: var(--color-text-secondary); }
+        .vocab-item { padding: 1px var(--sp-2); background: var(--color-bg-card); }
+        .vocab-item.added { background: var(--color-success-light); color: var(--color-success); font-weight: 600; }
+        .vocab-item.unchanged { color: var(--color-text-muted); }
+        .vocab-item.placeholder { visibility: hidden; background: var(--color-bg-card); }
+
         .empty-state { text-align: center; padding: var(--sp-8) var(--sp-4); color: var(--color-text-muted); font-size: 0.85rem; }
 
         /* Progress bar */
@@ -271,6 +278,7 @@
                 <button class="btn-secondary btn-sm hidden" id="cancel-analyze-btn">Cancel</button>
             </div>
             <div id="analyze-progress" class="hidden"></div>
+            <div id="vocab-diff"></div>
             <div id="analysis-results" class="hidden" style="margin-top:var(--sp-4)">
                 <table class="summary" id="summary-table">
                     <thead><tr><th>Category</th><th>Transactions</th><th>Merchants</th></tr></thead>
@@ -779,6 +787,25 @@ function renderProgressComplete(containerId, result, elapsed) {
     </div>`;
 }
 
+function renderVocabularyDiff(containerId, vocabulary) {
+    if (!vocabulary) return;
+    const { initial, current } = vocabulary;
+    const added = current.filter(c => !initial.includes(c));
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = `<details ${added.length > 0 ? 'open' : ''} style="margin-top:var(--sp-2)">
+        <summary style="font-size:0.75rem;cursor:pointer;color:var(--color-text-secondary)">
+            Category Vocabulary (${initial.length} initial${added.length ? ` + ${added.length} new` : ''})
+        </summary>
+        <div class="vocab-diff">
+            <div class="vocab-col-header">Initial (Firefly)</div>
+            <div class="vocab-col-header">Modified (AI)</div>
+            ${initial.map(c => `<div class="vocab-item unchanged">${esc(c)}</div><div class="vocab-item unchanged">${esc(c)}</div>`).join('')}
+            ${added.map(c => `<div class="vocab-item placeholder">&nbsp;</div><div class="vocab-item added">+ ${esc(c)}</div>`).join('')}
+        </div>
+    </details>`;
+}
+
 function streamSSE(url, method, body, onProgress) {
     return new Promise((resolve, reject) => {
         const ctrl = new AbortController();
@@ -795,20 +822,24 @@ function streamSSE(url, method, body, onProgress) {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
+            let currentEvt = '';
 
             function processBuffer() {
                 const lines = buffer.split('\n');
                 buffer = lines.pop();
-                let evt = '';
                 for (const line of lines) {
-                    if (line.startsWith('event: ')) evt = line.slice(7);
-                    else if (line.startsWith('data: ')) {
+                    if (line.startsWith('event: ')) {
+                        currentEvt = line.slice(7);
+                    } else if (line.startsWith('data: ')) {
                         try {
                             const data = JSON.parse(line.slice(6));
-                            if (evt === 'progress' && onProgress) onProgress(data);
-                            else if (evt === 'complete') { done_(resolve, data); return true; }
-                            else if (evt === 'error') { done_(reject, new Error(data.message)); return true; }
+                            if (currentEvt === 'progress' && onProgress) onProgress(data);
+                            else if (currentEvt === 'complete') { done_(resolve, data); return true; }
+                            else if (currentEvt === 'error') { done_(reject, new Error(data.message)); return true; }
                         } catch {}
+                        currentEvt = '';
+                    } else if (line === '') {
+                        currentEvt = '';
                     }
                 }
                 return false;
@@ -819,7 +850,6 @@ function streamSSE(url, method, body, onProgress) {
                     if (value) buffer += decoder.decode(value, { stream: !done });
                     if (processBuffer()) return;
                     if (done) {
-                        // Flush any remaining buffer content
                         if (buffer.trim()) {
                             buffer += '\n';
                             if (processBuffer()) return;
@@ -866,6 +896,7 @@ $('#analyze-btn').addEventListener('click', async () => {
                 });
             } else {
                 renderProgress('analyze-progress', { ...p, elapsed: Date.now() - startTime });
+                if (p.vocabulary) renderVocabularyDiff('vocab-diff', p.vocabulary);
             }
         });
 

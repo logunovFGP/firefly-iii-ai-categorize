@@ -10,23 +10,34 @@ export default class OpenAiProvider extends AiProvider {
     }
 
     async classify(categories, destinationName, description, examples = []) {
-        const prompt = this._generatePrompt(categories, destinationName, description, examples);
+        const basePrompt = this._generatePrompt(categories, destinationName, description, examples);
         return this._withRetry(async () => {
-            const response = await this.#client.chat.completions.create({
-                model: this._model,
-                messages: [
-                    { role: "system", content: AiProvider.SYSTEM_PROMPT_SINGLE },
-                    { role: "user", content: prompt },
-                ],
-                temperature: 0.1,
-                max_tokens: 50,
-            });
-            const guess = response.choices[0].message.content.trim().replace(/^["']|["']$/g, "");
-            const category = categories.includes(guess)
-                ? guess
-                : categories.find(c => c.toLowerCase() === guess.toLowerCase()) || null;
-            if (!category) console.warn(`OpenAI: "${guess}" not in categories`);
-            return { prompt, response: guess, category };
+            const result = await this._callWithJsonRetry(
+                async (errorCtx) => {
+                    const messages = [
+                        { role: "system", content: AiProvider.SYSTEM_PROMPT_SINGLE },
+                        { role: "user", content: basePrompt },
+                    ];
+                    if (errorCtx) messages.push({ role: "user", content: `Fix: ${errorCtx}` });
+                    const response = await this.#client.chat.completions.create({
+                        model: this._model, messages,
+                        temperature: 0.1, max_tokens: 60,
+                        response_format: { type: "json_object" },
+                    });
+                    return response.choices[0].message.content;
+                },
+                (parsed) => {
+                    if (!parsed || typeof parsed !== "object") return null;
+                    const guess = parsed.category;
+                    if (guess === null || guess === undefined) return { category: null, response: null, prompt: basePrompt };
+                    const matched = categories.includes(guess)
+                        ? guess
+                        : categories.find(c => c.toLowerCase() === guess.toLowerCase()) || null;
+                    if (!matched) console.warn(`OpenAI: "${guess}" not in categories`);
+                    return { category: matched, response: guess, prompt: basePrompt };
+                }
+            );
+            return result || { category: null, response: null, prompt: basePrompt };
         });
     }
 

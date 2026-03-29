@@ -38,8 +38,33 @@ export default class AiProvider {
         }
     }
 
+    async _callWithJsonRetry(callFn, validateFn, maxRetries = 2) {
+        let lastError = null;
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            const raw = await callFn(attempt > 0 ? lastError : null);
+            const cleaned = this._cleanJson(raw);
+            try {
+                const parsed = JSON.parse(cleaned);
+                const result = validateFn(parsed);
+                if (result !== null) return result;
+                lastError = `Parsed JSON but validation failed. Got: ${cleaned.slice(0, 300)}`;
+            } catch (e) {
+                lastError = `Invalid JSON: ${e.message}. You returned: ${cleaned.slice(0, 200)}. Reply with valid JSON only.`;
+            }
+        }
+        return null;
+    }
+
+    _cleanJson(raw) {
+        let s = (raw || "").trim();
+        if (s.startsWith("```")) {
+            s = s.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+        }
+        return s;
+    }
+
     static get SYSTEM_PROMPT_SINGLE() {
-        return 'You are a bank transaction categorizer. Reply with ONLY the category name, nothing else. No quotes, no JSON, no explanation. Correct: Groceries. Wrong: "Groceries". Wrong: {"category":"Groceries"}. If uncertain, reply: UNKNOWN';
+        return 'You are a bank transaction categorizer. Reply with JSON only: {"category":"CategoryName"}. If uncertain: {"category":null}. No markdown, no explanation. Correct: {"category":"Groceries"}. Wrong: Groceries. Wrong: "Groceries".';
     }
 
     static get SYSTEM_PROMPT_BATCH() {
@@ -52,7 +77,7 @@ export default class AiProvider {
             prompt += `\nExamples:\n`;
             for (const ex of examples) prompt += `- "${ex.merchant}" → ${ex.category}\n`;
         }
-        prompt += `\nTransaction from "${destinationName}" with description "${description}".\nCategory:`;
+        prompt += `\nTransaction from "${destinationName}" with description "${description}".\nJSON:`;
         return prompt;
     }
 
@@ -71,10 +96,7 @@ export default class AiProvider {
     }
 
     _parseBatchResponse(raw, categories, transactions) {
-        let cleaned = raw.trim();
-        if (cleaned.startsWith("```")) {
-            cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
-        }
+        const cleaned = this._cleanJson(raw);
 
         let parsed;
         try {
