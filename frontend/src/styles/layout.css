@@ -1,0 +1,22 @@
+*, *::before, *::after { box-sizing: border-box; }
+body { font-family: var(--font); background: var(--color-bg); margin: 0; color: var(--color-text); font-size: 14px; }
+.app { max-width: var(--max-width-app); margin: 0 auto; padding: var(--sp-4); }
+.header { display: flex; justify-content: space-between; align-items: center; padding: var(--sp-4) 0; margin-bottom: var(--sp-2); }
+.header h1 { font-size: 1.25rem; margin: 0; }
+.conn-badge { display: inline-flex; align-items: center; gap: var(--sp-1); padding: var(--sp-1) var(--sp-3); border-radius: var(--radius-pill); font-size: 0.75rem; font-weight: 600; }
+.conn-dot { width: 8px; height: 8px; border-radius: 50%; }
+.conn-ok .conn-dot { background: var(--color-success); }
+.conn-ok { background: var(--color-success-light); color: var(--color-success); }
+.conn-fail .conn-dot { background: var(--color-danger); }
+.conn-fail { background: var(--color-danger-light); color: var(--color-danger); }
+.conn-checking .conn-dot { background: var(--color-warning); animation: pulse 1s infinite; }
+.conn-checking { background: var(--color-warning-light); color: var(--color-warning); }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.tabs { display: flex; gap: var(--sp-1); border-bottom: 2px solid var(--color-border); margin-bottom: var(--sp-4); overflow-x: auto; }
+.tab { padding: var(--sp-2) var(--sp-4); border: none; background: none; cursor: pointer; font-size: 0.875rem; font-weight: 500; color: var(--color-text-secondary); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all var(--transition); white-space: nowrap; }
+.tab:hover { color: var(--color-text); }
+.tab.active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+.tab:focus-visible { outline: var(--focus-ring); outline-offset: calc(-1 * var(--focus-ring-offset)); border-radius: var(--radius-sm); }
+.card { background: var(--color-bg-card); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); padding: var(--sp-6); margin-bottom: var(--sp-4); }
+.card-title { font-size: 1rem; font-weight: 600; margin: 0 0 var(--sp-4) 0; padding-bottom: var(--sp-2); border-bottom: 1px solid var(--color-border); }
+.card-subtitle { font-size: 0.8rem; color: var(--color-text-muted); margin: 0 0 var(--sp-4) 0; }

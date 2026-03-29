@@ -1,0 +1,14 @@
+[x-cloak] { display: none !important; }
+.empty-state { text-align: center; padding: var(--sp-8) var(--sp-4); color: var(--color-text-muted); font-size: 0.85rem; }
+.text-danger { color: var(--color-danger); }
+.text-muted { color: var(--color-text-muted); }
+.text-sm { font-size: 0.8rem; }
+.text-xs { font-size: 0.75rem; }
+.filter-select { width: auto; padding: var(--sp-1) var(--sp-2); font-size: 0.8rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+
+@media (max-width: 640px) {
+    .form-row { flex-direction: column; }
+    .job-header { flex-direction: column; align-items: flex-start; }
+    .tabs { gap: 0; }
+    .tab { padding: var(--sp-2) var(--sp-3); font-size: 0.8rem; }
+}

@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firefly III AI Categorizer</title>
+</head>
+<body>
+<div class="app" x-cloak>
+    <!-- Header -->
+    <header class="header">
+        <h1>Firefly III AI Categorizer</h1>
+        <div class="conn-badge"
+             :class="{ 'conn-ok': $store.app.connection.status === 'ok', 'conn-fail': $store.app.connection.status === 'fail', 'conn-checking': $store.app.connection.status === 'checking' }">
+            <span class="conn-dot"></span>
+            <span x-text="$store.app.connection.status === 'ok' ? `Firefly III v${$store.app.connection.version}` : ($store.app.connection.status === 'checking' ? 'checking...' : $store.app.connection.error || 'unreachable')"></span>
+        </div>
+    </header>
+
+    <!-- Tabs -->
+    <nav class="tabs" role="tablist" aria-label="Main navigation">
+        <template x-for="tab in ['setup','classify','rules','memory','settings']" :key="tab">
+            <button class="tab" role="tab"
+                    :class="{ active: $store.app.activeTab === tab }"
+                    :aria-selected="($store.app.activeTab === tab).toString()"
+                    @click="$store.app.switchTab(tab)"
+                    x-text="tab.charAt(0).toUpperCase() + tab.slice(1)">
+            </button>
+        </template>
+    </nav>
+
+    <!-- ═══ SETUP TAB ═══ -->
+    <div x-show="$store.app.activeTab === 'setup'" role="tabpanel">
+        <div class="card">
+            <div class="card-title">Getting Started</div>
+
+            <!-- Step 1 -->
+            <div class="wizard-step" x-data="{ get done() { return $store.app.server?.hasFireflyPersonalToken && $store.app.connection.status === 'ok'; } }"
+                 :class="{ completed: done, active: !done }">
+                <div class="wizard-step-header">
+                    <h3>Step 1: Connect to Firefly III</h3>
+                    <span class="wizard-check" x-show="done" x-text="`Connected v${$store.app.connection.version || '?'}`"></span>
+                </div>
+                <div x-show="!done" x-data="{ token: '' }">
+                    <p class="text-sm text-muted" style="margin:0 0 var(--sp-3) 0">
+                        Go to Firefly III &rarr; Profile &rarr; OAuth tab &rarr; scroll to <strong>Personal Access Tokens</strong> &rarr; Create New Token.
+                        <span class="text-danger">Not an OAuth Client.</span>
+                    </p>
+                    <div class="form-group">
+                        <label>Personal Access Token</label>
+                        <input type="password" x-model="token" autocomplete="off" placeholder="Paste the long token string">
+                    </div>
+                    <button class="btn-primary" :disabled="$store.app.loading.firefly || !token.trim()" @click="$store.app.testFirefly(token); token = ''">
+                        <span x-text="$store.app.loading.firefly ? 'Testing...' : 'Save & Test Connection'"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="wizard-step" x-data="{ get step1() { return $store.app.server?.hasFireflyPersonalToken && $store.app.connection.status === 'ok'; }, get done() { return this.step1 && $store.app.activeProviderHasKey; }, provider: '', model: '', key: '' }"
+                 :class="{ completed: done, active: step1 && !done }"
+                 x-init="$watch('$store.app.server', s => { if (s) { provider = s.activeProvider; model = s.activeModel; } })">
+                <div class="wizard-step-header">
+                    <h3>Step 2: Configure AI Provider</h3>
+                    <span class="wizard-check" x-show="done" x-text="`${$store.app.server?.activeProvider} / ${$store.app.server?.activeModel}`"></span>
+                </div>
+                <div x-show="step1 && !done">
+                    <div class="form-group">
+                        <label>Provider</label>
+                        <div class="provider-radios">
+                            <template x-for="[name, def] in Object.entries($store.app.server?.providers || {})" :key="name">
+                                <label><input type="radio" name="wiz-provider" :value="name" x-model="provider" @change="model = def.defaultModel"> <span x-text="def.label"></span></label>
+                            </template>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Model</label>
+                        <select x-model="model">
+                            <template x-for="m in ($store.app.server?.providers?.[provider]?.models || [])" :key="m.id">
+                                <option :value="m.id" x-text="m.label"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>API Key</label>
+                        <input type="password" x-model="key" autocomplete="off" placeholder="Paste your API key">
+                    </div>
+                    <button class="btn-primary" :disabled="$store.app.loading.ai || !key.trim()" @click="$store.app.saveSettings({ activeProvider: provider, activeModel: model, providerName: provider, providerApiKey: key }); key = ''">
+                        <span x-text="$store.app.loading.ai ? 'Saving...' : 'Save & Test AI'"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="wizard-step" :class="{ active: $store.app.isSetupComplete }">
+                <div class="wizard-step-header"><h3>Step 3: Ready!</h3></div>
+                <div x-show="$store.app.isSetupComplete">
+                    <p class="text-sm" style="margin:0 0 var(--sp-3) 0">Everything is configured.</p>
+                    <button class="btn-success" @click="$store.app.switchTab('classify')">Start Categorizing</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ CLASSIFY TAB ═══ -->
+    <div x-show="$store.app.activeTab === 'classify'" role="tabpanel">
+        <!-- Batch -->
+        <div class="card">
+            <div class="card-title">Batch Categorization</div>
+            <div class="card-subtitle">Analyze uncategorized transactions, review proposals, then apply.</div>
+            <div class="btn-group" style="margin-top:0">
+                <button class="btn-primary" :disabled="$store.batch.analyzing" @click="$store.batch.startAnalysis()">
+                    <span x-text="$store.batch.analyzing ? 'Analyzing...' : 'Analyze Uncategorized'"></span>
+                </button>
+                <button class="btn-secondary btn-sm" x-show="$store.batch.analyzing" @click="$store.batch.cancelAnalysis()">Cancel</button>
+            </div>
+
+            <!-- Progress -->
+            <div x-show="$store.batch.analyzing || $store.batch.analyzeProgress.processed > 0" class="progress-container">
+                <div class="progress-header">
+                    <span><strong x-text="`${$store.batch.analyzeProgress.processed} of ${$store.batch.analyzeProgress.total}`"></strong></span>
+                    <span class="progress-elapsed" x-text="formatElapsed($store.batch.analyzeProgress.elapsed)"></span>
+                </div>
+                <div class="progress-bar" role="progressbar" :aria-valuenow="$store.batch.analyzeProgress.pct" aria-valuemin="0" aria-valuemax="100">
+                    <div class="progress-bar-fill" :style="`width:${$store.batch.analyzeProgress.pct}%`"></div>
+                </div>
+                <div class="progress-detail" x-text="$store.batch.analyzeProgress.current"></div>
+            </div>
+
+            <!-- Vocabulary diff -->
+            <template x-if="$store.batch.vocabulary.initial.length > 0">
+                <details :open="$store.batch.vocabulary.added?.length > 0" style="margin-top:var(--sp-2)">
+                    <summary class="text-xs text-muted" x-text="`Category Vocabulary (${$store.batch.vocabulary.initial.length} initial${$store.batch.vocabulary.added?.length ? ` + ${$store.batch.vocabulary.added.length} new` : ''})`"></summary>
+                    <div class="vocab-diff">
+                        <div class="vocab-col-header">Initial (Firefly)</div>
+                        <div class="vocab-col-header">Modified (AI)</div>
+                        <template x-for="c in $store.batch.vocabulary.initial" :key="'i-'+c">
+                            <div style="display:contents"><div class="vocab-item unchanged" x-text="c"></div><div class="vocab-item unchanged" x-text="c"></div></div>
+                        </template>
+                        <template x-for="c in ($store.batch.vocabulary.added || [])" :key="'a-'+c">
+                            <div style="display:contents"><div class="vocab-item placeholder">&nbsp;</div><div class="vocab-item added" x-text="`+ ${c}`"></div></div>
+                        </template>
+                    </div>
+                </details>
+            </template>
+
+            <!-- Errors log -->
+            <template x-if="$store.batch.analyzeErrors.length > 0">
+                <details class="progress-errors-log">
+                    <summary x-text="`${$store.batch.analyzeErrors.length} error(s) during analysis`"></summary>
+                    <div class="log-body"><template x-for="e in $store.batch.analyzeErrors" :key="e"><div x-text="e"></div></template></div>
+                </details>
+            </template>
+
+            <!-- Results -->
+            <div x-show="$store.batch.hasResults" style="margin-top:var(--sp-4)">
+                <!-- Merge UI -->
+                <div x-show="$store.batch.hasDuplicates" class="merge-section">
+                    <strong class="text-sm" style="color:var(--color-warning)">Duplicate categories detected:</strong>
+                    <template x-for="(dup, i) in ($store.batch.result?.duplicates || [])" :key="i">
+                        <div style="display:flex;gap:var(--sp-2);align-items:center;margin-top:var(--sp-1);font-size:0.8rem">
+                            <span x-text="dup.variants.join(', ')"></span><span>&rarr;</span>
+                            <select @change="$store.batch.mergeSelections[i] = $event.target.value" class="filter-select">
+                                <template x-for="v in dup.variants" :key="v"><option :value="v" :selected="v === dup.recommended" x-text="v"></option></template>
+                            </select>
+                        </div>
+                    </template>
+                    <button class="btn-primary btn-sm" style="margin-top:var(--sp-2)" @click="$store.batch.applyMerge()">Apply Merge</button>
+                </div>
+
+                <!-- Summary table -->
+                <table class="summary">
+                    <thead><tr><th>Category</th><th>Transactions</th><th>Merchants</th></tr></thead>
+                    <tbody>
+                        <template x-for="s in ($store.batch.result?.summary || [])" :key="s.category">
+                            <tr><td x-text="s.category"></td><td x-text="s.transactionCount"></td><td x-text="s.merchants.join(', ')"></td></tr>
+                        </template>
+                    </tbody>
+                </table>
+
+                <!-- New categories -->
+                <div x-show="$store.batch.hasNewCategories" style="margin-top:var(--sp-4)">
+                    <strong class="text-sm">Suggested New Categories</strong>
+                    <template x-for="p in ($store.batch.result?.newCategoryProposals || [])" :key="p.suggestedCategoryName">
+                        <label style="display:block;font-size:0.8rem;margin-top:var(--sp-1)">
+                            <input type="checkbox" :checked="$store.batch.newCategoryChecked[p.suggestedCategoryName] !== false" @change="$store.batch.newCategoryChecked[p.suggestedCategoryName] = $event.target.checked">
+                            Create "<strong x-text="p.suggestedCategoryName"></strong>" (<span x-text="p.transactionCount"></span> txns)
+                        </label>
+                    </template>
+                </div>
+
+                <!-- Apply -->
+                <div class="btn-group">
+                    <button class="btn-success" :disabled="$store.batch.applying" @click="$store.batch.applyAll()">
+                        <span x-text="$store.batch.applying ? 'Applying...' : 'Apply All Proposals'"></span>
+                    </button>
+                </div>
+
+                <!-- Apply progress -->
+                <div x-show="$store.batch.applying || $store.batch.applyProgress.applied > 0" class="progress-container" style="margin-top:var(--sp-2)">
+                    <div class="progress-bar"><div class="progress-bar-fill" :style="`width:${$store.batch.applyProgress.pct}%`"></div></div>
+                    <div class="progress-detail" x-text="`Applied: ${$store.batch.applyProgress.applied}, Failed: ${$store.batch.applyProgress.failed}, Total: ${$store.batch.applyProgress.total}`"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Jobs -->
+        <div class="card">
+            <div class="card-title">Classification Jobs</div>
+            <select class="filter-select" x-model="$store.jobs.filter" style="margin-bottom:var(--sp-3)">
+                <option value="all">All Jobs</option>
+                <option value="review">Needs Review</option>
+            </select>
+            <template x-if="$store.jobs.filteredJobs.length === 0">
+                <div class="empty-state">No jobs yet. Use the wizard or Analyze button to start categorizing.</div>
+            </template>
+            <template x-for="job in $store.jobs.filteredJobs" :key="job.id">
+                <div class="job" :class="{ 'needs-review': job.needs_review === 1 }" x-data="{ selectedCat: '', correcting: false }">
+                    <div class="job-header">
+                        <strong x-text="`${job.destination_name || ''} → ${job.corrected_category || job.category || '???'}`"></strong>
+                        <div>
+                            <span class="badge" :class="badgeClass(job.source)" x-text="badgeLabel(job.source)"></span>
+                            <span x-text="job.confidence != null ? `${Math.round(job.confidence * 100)}%` : ''"></span>
+                        </div>
+                    </div>
+                    <div class="job-meta"><span x-text="new Date(job.created).toLocaleString()"></span> | <span x-text="job.description || ''"></span></div>
+                    <template x-if="job.prompt">
+                        <details><summary>Prompt & Response</summary><pre x-text="job.prompt"></pre><pre x-text="job.response || ''"></pre></details>
+                    </template>
+                    <div class="job-actions">
+                        <select x-model="selectedCat" class="filter-select" aria-label="Correction category">
+                            <option value="">-- correct --</option>
+                            <template x-for="cat in $store.app.categories" :key="cat.name"><option :value="cat.name" x-text="cat.name"></option></template>
+                        </select>
+                        <button class="btn-secondary btn-sm" :disabled="correcting || !selectedCat" @click="correcting = true; $store.jobs.correctJob(job.id, selectedCat, ($store.app.categories.find(c => c.name === selectedCat)?.id || '')).finally(() => { correcting = false; selectedCat = ''; })">Correct</button>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- ═══ RULES TAB ═══ -->
+    <div x-show="$store.app.activeTab === 'rules'" role="tabpanel">
+        <div class="card" x-data="{ rules: [], saving: false }" x-init="$watch('$store.app.server?.keywordRules', v => { if (v) rules = JSON.parse(JSON.stringify(v)); }); if ($store.app.server?.keywordRules) rules = JSON.parse(JSON.stringify($store.app.server.keywordRules));">
+            <div class="card-title">Keyword Rules</div>
+            <div class="card-subtitle">Keyword matches bypass AI and save API cost.</div>
+            <template x-if="rules.length === 0"><div class="empty-state">No keyword rules defined.</div></template>
+            <template x-for="(rule, i) in rules" :key="i">
+                <div class="rule-row">
+                    <input type="text" :value="rule.keywords?.join(', ') || ''" @input="rules[i] = { ...rules[i], keywords: $event.target.value.split(',').map(s => s.trim()).filter(Boolean) }" placeholder="uber, lyft, bolt">
+                    <span class="rule-arrow">&rarr;</span>
+                    <input type="text" :value="rule.category || ''" @input="rules[i] = { ...rules[i], category: $event.target.value }" placeholder="Category name">
+                    <button class="btn-danger btn-sm" @click="rules = rules.filter((_, j) => j !== i)" aria-label="Remove rule">&times;</button>
+                </div>
+            </template>
+            <div class="btn-group">
+                <button class="btn-secondary" @click="rules = [...rules, { keywords: [], category: '' }]">+ Add Rule</button>
+                <button class="btn-primary" :disabled="saving" @click="saving = true; $store.app.saveRules(rules).finally(() => saving = false)">
+                    <span x-text="saving ? 'Saving...' : 'Save Rules'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ MEMORY TAB ═══ -->
+    <div x-show="$store.app.activeTab === 'memory'" role="tabpanel">
+        <div class="card">
+            <div class="card-title">Merchant Memory</div>
+            <div class="card-subtitle">Learned merchant-to-category mappings.</div>
+            <div class="stats-row">
+                <div><span x-text="$store.app.server?.memoryStats?.total || 0"></span> learned</div>
+                <div><span x-text="$store.app.server?.memoryStats?.user_corrected || 0"></span> corrected</div>
+            </div>
+            <template x-if="$store.app.memoryEntries.length === 0"><div class="empty-state">No merchants learned yet.</div></template>
+            <template x-for="e in $store.app.memoryEntries" :key="e.raw_name">
+                <div class="memory-entry">
+                    <div><strong x-text="e.raw_name"></strong> &rarr; <span x-text="e.category"></span> <span class="text-muted text-xs" x-text="`(${e.corrected ? 'corrected' : e.source}, ${e.count}x)`"></span></div>
+                </div>
+            </template>
+            <div class="btn-group">
+                <button class="btn-danger btn-sm" x-data="{ confirming: false }" @click="if (confirming) { $store.app.clearMemory(); confirming = false; } else { confirming = true; }" x-text="confirming ? 'Click again to confirm' : 'Clear All Memory'"></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ SETTINGS TAB ═══ -->
+    <div x-show="$store.app.activeTab === 'settings'" role="tabpanel">
+        <div class="card" x-data="{ fireflyToken: '', provider: '', model: '', providerKey: '', customModel: false, customModelId: '' }"
+             x-init="$watch('$store.app.server', s => { if (s) { provider = s.activeProvider; model = s.activeModel; } }); if ($store.app.server) { provider = $store.app.server.activeProvider; model = $store.app.server.activeModel; }">
+            <div class="card-title">Configuration</div>
+
+            <!-- Firefly -->
+            <div class="form-group">
+                <label>Firefly III URL</label>
+                <input type="url" :value="$store.app.server?.fireflyUrl || ''" disabled title="Set via FIREFLY_URL env var">
+                <div class="form-status" data-state="configured">set via environment</div>
+            </div>
+            <div class="form-group">
+                <label>Firefly Personal Token</label>
+                <input type="password" x-model="fireflyToken" autocomplete="off" placeholder="Paste new token to update">
+                <div class="form-status" :data-state="fireflyToken.trim() ? 'pending' : ($store.app.server?.hasFireflyPersonalToken ? 'configured' : 'missing')"
+                     x-text="fireflyToken.trim() ? 'new value (save to apply)' : ($store.app.server?.hasFireflyPersonalToken ? `configured (${$store.app.server.fireflyPersonalTokenPreview})` : 'not configured')"></div>
+            </div>
+            <button class="btn-secondary btn-sm" :disabled="$store.app.loading.firefly" @click="$store.app.testFirefly(fireflyToken); fireflyToken = ''">
+                <span x-text="$store.app.loading.firefly ? 'Testing...' : 'Test Firefly Connection'"></span>
+            </button>
+
+            <hr class="form-divider">
+
+            <!-- AI Provider -->
+            <div class="form-group">
+                <label>AI Provider</label>
+                <div class="provider-radios">
+                    <template x-for="[name, def] in Object.entries($store.app.server?.providers || {})" :key="name">
+                        <label><input type="radio" name="settings-provider" :value="name" x-model="provider" @change="model = def.defaultModel"> <span x-text="def.label"></span></label>
+                    </template>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Model</label>
+                    <select x-model="model" x-show="!customModel">
+                        <template x-for="m in ($store.app.server?.providers?.[provider]?.models || [])" :key="m.id"><option :value="m.id" x-text="m.label"></option></template>
+                    </select>
+                    <input x-show="customModel" type="text" x-model="customModelId" placeholder="e.g. gpt-4o-2024-08-06">
+                </div>
+                <div class="form-group"><label><input type="checkbox" x-model="customModel"> Custom model</label></div>
+            </div>
+            <div class="form-group">
+                <label x-text="`API Key for ${$store.app.server?.providers?.[provider]?.label || provider}`"></label>
+                <input type="password" x-model="providerKey" autocomplete="off" placeholder="Paste API key">
+                <div class="form-status" :data-state="providerKey.trim() ? 'pending' : ($store.app.server?.providers?.[provider]?.hasApiKey ? 'configured' : 'missing')"
+                     x-text="providerKey.trim() ? 'new value (save to apply)' : ($store.app.server?.providers?.[provider]?.hasApiKey ? `configured (${$store.app.server?.providers?.[provider]?.apiKeyPreview})` : 'not configured')"></div>
+            </div>
+            <template x-for="[name, def] in Object.entries($store.app.server?.providers || {}).filter(([n]) => n !== provider)" :key="name">
+                <div class="text-sm text-muted" x-text="`${def.label} API Key: ${def.hasApiKey ? `configured (${def.apiKeyPreview})` : 'not configured'}`"></div>
+            </template>
+            <button class="btn-secondary btn-sm" style="margin-top:var(--sp-2)" :disabled="$store.app.loading.ai" @click="$store.app.testAi(provider, providerKey); providerKey = ''">
+                <span x-text="$store.app.loading.ai ? 'Testing...' : 'Test AI Connection'"></span>
+            </button>
+
+            <hr class="form-divider">
+
+            <!-- Behavior -->
+            <div class="form-row" x-data="{ threshold: $store.app.server?.confidenceThreshold || 0.5, webhook: $store.app.server?.enableWebhook ?? true }"
+                 x-init="$watch('$store.app.server', s => { if (s) { threshold = s.confidenceThreshold; webhook = s.enableWebhook; } })">
+                <div class="form-group">
+                    <label>Confidence Threshold</label>
+                    <select x-model="threshold">
+                        <option value="0.3">0.3 (aggressive)</option>
+                        <option value="0.5">0.5 (balanced)</option>
+                        <option value="0.7">0.7 (conservative)</option>
+                        <option value="0.85">0.85 (strict)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label><input type="checkbox" x-model="webhook"> Enable webhook</label>
+                    <div class="form-status">Auto-categorize new transactions</div>
+                </div>
+            </div>
+
+            <hr class="form-divider">
+
+            <div class="btn-group">
+                <button class="btn-primary" :disabled="$store.app.loading.settingsSave"
+                        @click="$store.app.saveSettings({ activeProvider: provider, activeModel: customModel ? customModelId : model, fireflyPersonalToken: fireflyToken || undefined, providerName: provider, providerApiKey: providerKey || undefined, confidenceThreshold: parseFloat($el.closest('[x-data]').querySelector('[x-model=threshold]')?.value || 0.5), enableWebhook: $el.closest('[x-data]').querySelector('[x-model=webhook]')?.checked ?? true }); fireflyToken = ''; providerKey = ''">
+                    <span x-text="$store.app.loading.settingsSave ? 'Saving...' : 'Save All Settings'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Auth Overlay -->
+<div class="auth-overlay" x-show="$store.app.authOverlayVisible" x-cloak x-transition.opacity x-trap.noscroll="$store.app.authOverlayVisible" role="dialog" aria-modal="true">
+    <div class="auth-box">
+        <h2>Authentication Required</h2>
+        <div class="form-group">
+            <label for="auth-token">API Token</label>
+            <input id="auth-token" type="password" x-model="$store.app._authInput" placeholder="Enter CATEGORIZER_API_TOKEN" @keydown.enter="$store.app.authenticate($store.app._authInput)">
+        </div>
+        <button class="btn-primary" style="width:100%" @click="$store.app.authenticate($store.app._authInput)">Authenticate</button>
+        <div class="form-status" x-show="$store.app.authError" data-state="missing" x-text="$store.app.authError"></div>
+    </div>
+</div>
+
+<!-- Toasts -->
+<div class="toast-container" role="status" aria-live="polite">
+    <template x-for="t in $store.toast.items" :key="t.id">
+        <div class="toast" :class="`toast-${t.type}`" :class="{ show: t.visible }" role="alert" x-text="t.message"></div>
+    </template>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+<script>
+function formatElapsed(ms) { const s = Math.round((ms || 0) / 1000); const m = Math.floor(s / 60); return m ? `${m}m ${s % 60}s` : `${s}s`; }
+function badgeClass(src) { if (!src) return ''; const map = { rule: 'badge-rule', memory: 'badge-memory', batch: 'badge-batch', ai: 'badge-ai', error: 'badge-error' }; for (const [k, v] of Object.entries(map)) if (src.startsWith(k + ':') || src.startsWith(k)) return v; return ''; }
+function badgeLabel(src) { if (!src) return ''; if (src.startsWith('ai:')) return src.replace('ai:', ''); for (const k of ['rule', 'memory', 'batch', 'error']) if (src.startsWith(k)) return k; return src; }
+</script>
+</body>
+</html>

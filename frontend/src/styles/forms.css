@@ -1,0 +1,26 @@
+.form-group { margin-bottom: var(--sp-4); }
+.form-group label { display: block; font-weight: 600; font-size: 0.8rem; margin-bottom: var(--sp-1); color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.03em; }
+.form-group input, .form-group select { width: 100%; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 0.875rem; transition: border-color var(--transition); background: var(--color-bg-card); }
+.form-group input:focus, .form-group select:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-light); }
+.form-status { font-size: 0.75rem; margin-top: var(--sp-1); }
+.form-status[data-state="configured"] { color: var(--color-success); }
+.form-status[data-state="missing"] { color: var(--color-danger); }
+.form-status[data-state="pending"] { color: var(--color-warning); }
+.form-row { display: flex; gap: var(--sp-3); align-items: flex-end; }
+.form-row > * { flex: 1; }
+.form-divider { border: none; border-top: 1px solid var(--color-border); margin: var(--sp-6) 0; }
+button { padding: var(--sp-2) var(--sp-4); border: none; border-radius: var(--radius-md); cursor: pointer; font-size: 0.8rem; font-weight: 500; transition: all var(--transition); }
+button:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-ring-offset); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary { background: var(--color-primary); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--color-primary-hover); }
+.btn-secondary { background: var(--color-border); color: var(--color-text); }
+.btn-secondary:hover:not(:disabled) { background: #bdbdbd; }
+.btn-danger { background: var(--color-danger); color: #fff; }
+.btn-danger:hover:not(:disabled) { background: #b71c1c; }
+.btn-success { background: var(--color-success); color: #fff; }
+.btn-success:hover:not(:disabled) { background: #1b5e20; }
+.btn-sm { padding: var(--sp-1) var(--sp-2); font-size: 0.75rem; }
+.btn-group { display: flex; gap: var(--sp-2); margin-top: var(--sp-4); }
+.provider-radios { display: flex; gap: var(--sp-4); }
+.provider-radios label { display: inline-flex; align-items: center; gap: var(--sp-1); font-weight: normal; cursor: pointer; font-size: 0.875rem; }
