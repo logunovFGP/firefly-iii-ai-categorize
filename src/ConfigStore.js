@@ -95,6 +95,11 @@ export default class ConfigStore {
         await this.#savePlainConfig();
     }
 
+    getParallelWorkers() {
+        const val = parseInt(this.#config.PARALLEL_WORKERS ?? process.env.PARALLEL_WORKERS ?? "3");
+        return Math.max(1, Math.min(10, isNaN(val) ? 3 : val));
+    }
+
     getBatchClassifySize() {
         const val = parseInt(this.#config.BATCH_CLASSIFY_SIZE ?? process.env.BATCH_CLASSIFY_SIZE ?? "20");
         return Math.max(1, Math.min(50, isNaN(val) ? 20 : val));

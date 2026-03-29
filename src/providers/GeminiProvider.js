@@ -11,23 +11,33 @@ export default class GeminiProvider extends AiProvider {
 
     async classify(categories, destinationName, description, examples = []) {
         const prompt = this._generatePrompt(categories, destinationName, description, examples);
-        const model = this.#genAI.getGenerativeModel({ model: this._model });
-        const result = await model.generateContent(prompt);
-        const guess = result.response.text().trim();
-        const category = categories.includes(guess) ? guess : null;
-        if (!category) console.warn(`Gemini could not classify. Model: ${this._model}, Guess: "${guess}"`);
-        return { prompt, response: guess, category };
+        return this._withRetry(async () => {
+            const model = this.#genAI.getGenerativeModel({
+                model: this._model,
+                systemInstruction: AiProvider.SYSTEM_PROMPT,
+            });
+            const result = await model.generateContent(prompt);
+            const guess = result.response.text().trim();
+            const category = categories.includes(guess)
+                ? guess
+                : categories.find(c => c.toLowerCase() === guess.toLowerCase()) || null;
+            if (!category) console.warn(`Gemini: "${guess}" not in categories`);
+            return { prompt, response: guess, category };
+        });
     }
 
     async classifyBatch(categories, transactions, examples = []) {
         const prompt = this._generateBatchPrompt(categories, transactions, examples);
-        const model = this.#genAI.getGenerativeModel({
-            model: this._model,
-            generationConfig: { responseMimeType: "application/json" },
+        return this._withRetry(async () => {
+            const model = this.#genAI.getGenerativeModel({
+                model: this._model,
+                systemInstruction: AiProvider.SYSTEM_PROMPT,
+                generationConfig: { responseMimeType: "application/json" },
+            });
+            const result = await model.generateContent(prompt);
+            const raw = result.response.text().trim();
+            return this._parseBatchResponse(raw, categories, transactions);
         });
-        const result = await model.generateContent(prompt);
-        const raw = result.response.text().trim();
-        return this._parseBatchResponse(raw, categories, transactions);
     }
 
     async testConnection() {

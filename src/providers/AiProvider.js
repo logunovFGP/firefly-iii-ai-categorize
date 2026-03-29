@@ -19,45 +19,74 @@ export default class AiProvider {
         throw new Error("testConnection() must be implemented by subclass");
     }
 
-    _generatePrompt(categories, destinationName, description, examples = []) {
-        let prompt = `Categorize this bank transaction into exactly one of these categories: ${categories.join(", ")}\n`;
-        if (examples.length > 0) {
-            prompt += `\nExamples of past categorizations:\n`;
-            for (const ex of examples) {
-                prompt += `- "${ex.merchant}" → ${ex.category}\n`;
+    async _withRetry(fn, maxRetries = 3) {
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                return await fn();
+            } catch (err) {
+                const isRateLimit = err.status === 429 || err.code === 429
+                    || err.message?.includes("rate") || err.message?.includes("429")
+                    || err.message?.includes("quota") || err.message?.includes("RESOURCE_EXHAUSTED");
+                if (attempt < maxRetries && isRateLimit) {
+                    const delay = Math.pow(2, attempt) * 1000 + Math.random() * 500;
+                    console.warn(`Rate limited, retry in ${Math.round(delay)}ms (attempt ${attempt + 1}/${maxRetries})`);
+                    await new Promise(r => setTimeout(r, delay));
+                    continue;
+                }
+                throw err;
             }
         }
-        prompt += `\nTransaction from "${destinationName}" with description "${description}".\n`;
-        prompt += `Reply with ONLY the category name, nothing else.`;
+    }
+
+    static get SYSTEM_PROMPT() {
+        return "You are a bank transaction categorizer. Reply with valid JSON only. Use ONLY category names from the allowed list. Use null for uncertain. No markdown, no explanation, no extra text.";
+    }
+
+    _generatePrompt(categories, destinationName, description, examples = []) {
+        let prompt = `Allowed categories: ${categories.join(", ")}\n`;
+        if (examples.length > 0) {
+            prompt += `\nExamples:\n`;
+            for (const ex of examples) prompt += `- "${ex.merchant}" → ${ex.category}\n`;
+        }
+        prompt += `\nTransaction from "${destinationName}" with description "${description}".\nCategory:`;
         return prompt;
     }
 
     _generateBatchPrompt(categories, transactions, examples = []) {
-        let prompt = `Categorize these bank transactions. For each, reply with the exact category name from this list:\n${categories.join(", ")}\n`;
+        let prompt = `Allowed categories: ${categories.join(", ")}\n`;
         if (examples.length > 0) {
             prompt += `\nExamples:\n`;
             for (const ex of examples) prompt += `- "${ex.merchant}" → ${ex.category}\n`;
         }
         prompt += `\nTransactions:\n`;
         transactions.forEach((t, i) => {
-            prompt += `${i + 1}. From "${t.destinationName}" — "${t.description}"\n`;
+            prompt += `${i + 1}. "${t.destinationName}" — "${t.description}"\n`;
         });
-        prompt += `\nReply in JSON format like: {"1":"CategoryA","2":"CategoryB"}\nRules:\n- Use ONLY names from the list above\n- Use null if unsure\n- Valid JSON only, no explanation`;
+        prompt += `\nJSON:`;
         return prompt;
     }
 
     _parseBatchResponse(raw, categories, transactions) {
+        let cleaned = raw.trim();
+        if (cleaned.startsWith("```")) {
+            cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+        }
+
         let parsed;
         try {
-            parsed = JSON.parse(raw);
+            parsed = JSON.parse(cleaned);
         } catch {
+            return transactions.map(() => ({ category: null, response: raw }));
+        }
+
+        if (typeof parsed !== "object" || Array.isArray(parsed)) {
             return transactions.map(() => ({ category: null, response: raw }));
         }
 
         return transactions.map((t, i) => {
             const key = String(i + 1);
             const guess = parsed[key];
-            if (!guess || guess === "null" || guess === null) {
+            if (!guess || guess === "null" || guess === null || guess === "UNKNOWN") {
                 return { category: null, response: guess };
             }
             const matched = categories.includes(guess)

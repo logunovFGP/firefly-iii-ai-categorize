@@ -103,9 +103,9 @@ export default class ClassificationEngine {
         };
     }
 
-    async classifyBatch(transactionList, { dryRun = false } = {}) {
+    async classifyBatch(transactionList, { dryRun = false, extraCategories = [] } = {}) {
         const categories = await this.#categoriesCache.getCategories();
-        const categoryNames = Array.from(categories.keys());
+        const categoryNames = [...new Set([...categories.keys(), ...extraCategories])];
         const threshold = this.#configStore.getConfidenceThreshold();
 
         const results = new Map();

@@ -276,6 +276,11 @@
                     <thead><tr><th>Category</th><th>Transactions</th><th>Merchants</th></tr></thead>
                     <tbody></tbody>
                 </table>
+                <div id="merge-section" class="hidden" style="margin-top:var(--sp-4);padding:var(--sp-3);background:var(--color-warning-light);border-radius:var(--radius-md)">
+                    <strong style="font-size:0.85rem;color:var(--color-warning)">Duplicate categories detected — select which name to keep:</strong>
+                    <div id="merge-list" style="margin-top:var(--sp-2)"></div>
+                    <button class="btn-primary btn-sm" id="apply-merge-btn" style="margin-top:var(--sp-2)">Apply Merge</button>
+                </div>
                 <div id="new-cat-section" class="hidden" style="margin-top:var(--sp-4)">
                     <strong style="font-size:0.8rem">Suggested New Categories</strong>
                     <div id="new-cat-list" style="margin-top:var(--sp-2)"></div>
@@ -872,6 +877,17 @@ $('#analyze-btn').addEventListener('click', async () => {
             el.innerHTML += `<details class="progress-errors-log"><summary>${errors.length} error(s) during analysis</summary><div class="log-body">${errors.map(e => `<div>${esc(e)}</div>`).join('')}</div></details>`;
         }
 
+        // Show auto-merge info
+        if (result.autoMerged > 0) showToast(`Auto-merged ${result.autoMerged} duplicate category name(s)`, 'info');
+
+        // Show merge UI if duplicates need user review
+        if (result.duplicates && result.duplicates.length > 0) {
+            renderMergeUI(result.duplicates);
+            $('#merge-section').classList.remove('hidden');
+        } else {
+            $('#merge-section').classList.add('hidden');
+        }
+
         renderAnalysis(result);
         $('#analysis-results').classList.remove('hidden');
         showToast(`Analysis complete: ${result.totalProposals} proposals`, 'success');
@@ -881,6 +897,43 @@ $('#analyze-btn').addEventListener('click', async () => {
         setLoading('#analyze-btn', false);
         $('#cancel-analyze-btn').classList.add('hidden');
     }
+});
+
+function renderMergeUI(duplicates) {
+    const list = $('#merge-list'); list.innerHTML = '';
+    duplicates.forEach((dup, i) => {
+        const opts = dup.variants.map(v => `<option value="${escAttr(v)}" ${v === dup.recommended ? 'selected' : ''}>${esc(v)}</option>`).join('');
+        list.innerHTML += `<div style="display:flex;gap:var(--sp-2);align-items:center;margin-bottom:var(--sp-1);font-size:0.8rem">
+            <span>${dup.variants.map(esc).join(', ')}</span>
+            <span>&rarr;</span>
+            <select class="merge-select" data-idx="${i}" style="padding:var(--sp-1);font-size:0.8rem">${opts}</select>
+        </div>`;
+    });
+}
+
+$('#apply-merge-btn').addEventListener('click', () => {
+    if (!STATE.analysisResult) return;
+    const mergeMap = {};
+    $$('.merge-select').forEach(sel => {
+        const idx = parseInt(sel.dataset.idx);
+        const dup = STATE.analysisResult.duplicates[idx];
+        const keep = sel.value;
+        for (const v of dup.variants) {
+            if (v !== keep) mergeMap[v.toLowerCase()] = keep;
+        }
+    });
+
+    // Remap proposals
+    STATE.analysisResult.proposals = STATE.analysisResult.proposals.map(p => {
+        const key = p.proposedCategory?.toLowerCase();
+        if (key && mergeMap[key]) return { ...p, proposedCategory: mergeMap[key] };
+        return p;
+    });
+    STATE.analysisResult.duplicates = [];
+
+    $('#merge-section').classList.add('hidden');
+    renderAnalysis(STATE.analysisResult);
+    showToast('Categories merged', 'success');
 });
 
 function renderAnalysis(result) {
