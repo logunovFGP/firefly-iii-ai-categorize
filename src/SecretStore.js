@@ -56,6 +56,37 @@ export default class SecretStore {
         await this.#save();
     }
 
+    async rotateKey() {
+        // Generate new key
+        const newKey = crypto.randomBytes(32);
+
+        // Decrypt all secrets with old key, re-encrypt with new key
+        const reEncrypted = {};
+        for (const [name, entry] of Object.entries(this.#secrets)) {
+            const plainValue = this.getSecret(name);
+            if (!plainValue) continue;
+
+            const iv = crypto.randomBytes(12);
+            const cipher = crypto.createCipheriv("aes-256-gcm", newKey, iv);
+            let encrypted = cipher.update(plainValue, "utf8", "hex");
+            encrypted += cipher.final("hex");
+            const tag = cipher.getAuthTag().toString("hex");
+            reEncrypted[name] = { iv: iv.toString("hex"), tag, ciphertext: encrypted };
+        }
+
+        // Swap
+        this.#secrets = reEncrypted;
+        this.#masterKey = newKey;
+        await this.#save();
+
+        // Update key file
+        const keyPath = path.join(path.dirname(this.#filePath), ".master_key");
+        await fs.writeFile(keyPath, newKey.toString("hex"), "utf8");
+
+        console.info("Master key rotated successfully");
+        return newKey.toString("hex");
+    }
+
     async #load() {
         try {
             const data = await fs.readFile(this.#filePath, "utf8");

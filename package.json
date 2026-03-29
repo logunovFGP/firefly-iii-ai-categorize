@@ -6,12 +6,16 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "ai:check": "node scripts/ai-check.mjs",
     "ai:check:ci": "node scripts/ai-check.mjs --ci"
   },
   "author": "",
   "license": "ISC",
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
     "better-sqlite3": "^11.7.0",
