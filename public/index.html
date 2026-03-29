@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Firefly III AI Categorizer</title>
-  <script type="module" crossorigin src="/assets/index-WJxcwKF5.js"></script>
+  <script type="module" crossorigin src="/assets/index-BiMjd_is.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-Dvz5Kv5B.css">
 </head>
 <body>
@@ -129,13 +129,18 @@
                 <div class="progress-detail" x-text="$store.batch.analyzeProgress.current"></div>
             </div>
 
-            <!-- Vocabulary diff -->
-            <template x-if="$store.batch.vocabulary.initial.length > 0">
-                <details :open="$store.batch.vocabulary.added?.length > 0" style="margin-top:var(--sp-2)">
-                    <summary class="text-xs text-muted" x-text="`Category Vocabulary (${$store.batch.vocabulary.initial.length} initial${$store.batch.vocabulary.added?.length ? ` + ${$store.batch.vocabulary.added.length} new` : ''})`"></summary>
-                    <div class="vocab-diff">
-                        <div class="vocab-col-header">Initial (Firefly)</div>
-                        <div class="vocab-col-header">Modified (AI)</div>
+            <!-- Vocabulary diff — always visible during analysis -->
+            <div x-show="$store.batch.analyzing || $store.batch.vocabulary.current.length > 0 || $store.batch.hasResults" style="margin-top:var(--sp-2)">
+                <details open>
+                    <summary class="text-xs text-muted" x-text="$store.batch.vocabulary.current.length === 0
+                        ? 'Category Vocabulary (loading...)'
+                        : `Category Vocabulary (${$store.batch.vocabulary.initial.length} existing${$store.batch.vocabulary.added?.length ? ` + ${$store.batch.vocabulary.added.length} discovered by AI` : ''} — ${$store.batch.vocabulary.current.length} total)`"></summary>
+                    <template x-if="$store.batch.vocabulary.current.length === 0 && $store.batch.vocabulary.initial.length === 0">
+                        <div class="text-xs text-muted" style="padding:var(--sp-2)">No categories in Firefly yet. The AI will suggest new categories during analysis.</div>
+                    </template>
+                    <div x-show="$store.batch.vocabulary.current.length > 0" class="vocab-diff">
+                        <div class="vocab-col-header">Existing (Firefly)</div>
+                        <div class="vocab-col-header">Discovered (AI)</div>
                         <template x-for="c in $store.batch.vocabulary.initial" :key="'i-'+c">
                             <div style="display:contents"><div class="vocab-item unchanged" x-text="c"></div><div class="vocab-item unchanged" x-text="c"></div></div>
                         </template>
@@ -144,7 +149,7 @@
                         </template>
                     </div>
                 </details>
-            </template>
+            </div>
 
             <!-- Errors log -->
             <template x-if="$store.batch.analyzeErrors.length > 0">

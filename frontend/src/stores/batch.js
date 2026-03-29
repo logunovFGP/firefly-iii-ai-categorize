@@ -23,7 +23,8 @@ export function initBatchStore(Alpine) {
             this.analyzing = true;
             this.result = null;
             this.analyzeErrors = [];
-            this.vocabulary = { initial: [], current: [], get added() { return this.current.filter(c => !this.initial.includes(c)); } };
+            const existingCats = (Alpine.store("app").categories || []).map(c => c.name).sort();
+            this.vocabulary = { initial: existingCats, current: [...existingCats], get added() { return this.current.filter(c => !this.initial.includes(c)); } };
             this._abortController = new AbortController();
             const startTime = Date.now();
 
