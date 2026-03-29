@@ -4,1090 +4,399 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Firefly III AI Categorizer</title>
-    <style>
-        :root {
-            --color-primary: #1565c0;
-            --color-primary-hover: #0d47a1;
-            --color-primary-light: #e3f2fd;
-            --color-success: #2e7d32;
-            --color-success-light: #e8f5e9;
-            --color-warning: #e65100;
-            --color-warning-light: #fff3e0;
-            --color-danger: #c62828;
-            --color-danger-light: #ffebee;
-            --color-text: #1a1a1a;
-            --color-text-secondary: #616161;
-            --color-text-muted: #9e9e9e;
-            --color-border: #e0e0e0;
-            --color-bg: #f5f5f5;
-            --color-bg-card: #ffffff;
-            --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-6: 24px; --sp-8: 32px;
-            --radius-sm: 4px; --radius-md: 6px; --radius-lg: 8px; --radius-pill: 9999px;
-            --shadow-sm: 0 1px 2px rgba(0,0,0,0.06); --shadow-md: 0 1px 3px rgba(0,0,0,0.12);
-            --transition: 200ms ease;
-            --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        }
-        *, *::before, *::after { box-sizing: border-box; }
-        body { font-family: var(--font); background: var(--color-bg); margin: 0; color: var(--color-text); font-size: 14px; }
-        .app { max-width: 900px; margin: 0 auto; padding: var(--sp-4); }
-
-        /* Header */
-        .header { display: flex; justify-content: space-between; align-items: center; padding: var(--sp-4) 0; margin-bottom: var(--sp-2); }
-        .header h1 { font-size: 1.25rem; margin: 0; }
-        .conn-badge { display: inline-flex; align-items: center; gap: var(--sp-1); padding: var(--sp-1) var(--sp-3); border-radius: var(--radius-pill); font-size: 0.75rem; font-weight: 600; }
-        .conn-dot { width: 8px; height: 8px; border-radius: 50%; }
-        .conn-ok .conn-dot { background: var(--color-success); }
-        .conn-ok { background: var(--color-success-light); color: var(--color-success); }
-        .conn-fail .conn-dot { background: var(--color-danger); }
-        .conn-fail { background: var(--color-danger-light); color: var(--color-danger); }
-        .conn-checking .conn-dot { background: var(--color-warning); animation: pulse 1s infinite; }
-        .conn-checking { background: var(--color-warning-light); color: var(--color-warning); }
-        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-
-        /* Tabs */
-        .tabs { display: flex; gap: var(--sp-1); border-bottom: 2px solid var(--color-border); margin-bottom: var(--sp-4); overflow-x: auto; }
-        .tab { padding: var(--sp-2) var(--sp-4); border: none; background: none; cursor: pointer; font-size: 0.875rem; font-weight: 500; color: var(--color-text-secondary); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all var(--transition); white-space: nowrap; }
-        .tab:hover { color: var(--color-text); }
-        .tab.active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
-        .tab:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; border-radius: var(--radius-sm); }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-
-        /* Cards */
-        .card { background: var(--color-bg-card); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); padding: var(--sp-6); margin-bottom: var(--sp-4); }
-        .card-title { font-size: 1rem; font-weight: 600; margin: 0 0 var(--sp-4) 0; padding-bottom: var(--sp-2); border-bottom: 1px solid var(--color-border); }
-        .card-subtitle { font-size: 0.8rem; color: var(--color-text-muted); margin: 0 0 var(--sp-4) 0; }
-
-        /* Forms */
-        .form-group { margin-bottom: var(--sp-4); }
-        .form-group label { display: block; font-weight: 600; font-size: 0.8rem; margin-bottom: var(--sp-1); color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.03em; }
-        .form-group input, .form-group select { width: 100%; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 0.875rem; transition: border-color var(--transition); background: var(--color-bg-card); }
-        .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-light); }
-        .form-status { font-size: 0.75rem; margin-top: var(--sp-1); }
-        .form-status[data-state="configured"] { color: var(--color-success); }
-        .form-status[data-state="missing"] { color: var(--color-danger); }
-        .form-status[data-state="pending"] { color: var(--color-warning); }
-        .form-row { display: flex; gap: var(--sp-3); align-items: flex-end; }
-        .form-row > * { flex: 1; }
-        .form-divider { border: none; border-top: 1px solid var(--color-border); margin: var(--sp-6) 0; }
-
-        /* Buttons */
-        button { padding: var(--sp-2) var(--sp-4); border: none; border-radius: var(--radius-md); cursor: pointer; font-size: 0.8rem; font-weight: 500; transition: all var(--transition); }
-        button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
-        .btn-primary { background: var(--color-primary); color: #fff; }
-        .btn-primary:hover:not(:disabled) { background: var(--color-primary-hover); }
-        .btn-secondary { background: var(--color-border); color: var(--color-text); }
-        .btn-secondary:hover:not(:disabled) { background: #bdbdbd; }
-        .btn-danger { background: var(--color-danger); color: #fff; }
-        .btn-danger:hover:not(:disabled) { background: #b71c1c; }
-        .btn-success { background: var(--color-success); color: #fff; }
-        .btn-success:hover:not(:disabled) { background: #1b5e20; }
-        .btn-sm { padding: var(--sp-1) var(--sp-2); font-size: 0.75rem; }
-        .btn-group { display: flex; gap: var(--sp-2); margin-top: var(--sp-4); }
-
-        /* Provider radios */
-        .provider-radios { display: flex; gap: var(--sp-4); }
-        .provider-radios label { display: inline-flex; align-items: center; gap: var(--sp-1); font-weight: normal; cursor: pointer; font-size: 0.875rem; }
-
-        /* Badges */
-        .badge { display: inline-block; padding: 1px var(--sp-2); border-radius: var(--radius-pill); font-size: 0.7rem; font-weight: 600; }
-        .badge-rule { background: var(--color-success-light); color: var(--color-success); }
-        .badge-memory { background: var(--color-primary-light); color: var(--color-primary); }
-        .badge-ai { background: #f3e5f5; color: #7b1fa2; }
-        .badge-batch { background: #e0f7fa; color: #00695c; }
-        .badge-review { background: var(--color-warning-light); color: var(--color-warning); }
-        .badge-error { background: var(--color-danger-light); color: var(--color-danger); }
-
-        /* Jobs */
-        .job { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--sp-3); margin-bottom: var(--sp-2); transition: border-color var(--transition); }
-        .job:hover { border-color: var(--color-primary); }
-        .job.needs-review { border-color: var(--color-warning); background: var(--color-warning-light); }
-        .job-header { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-2); }
-        .job-header strong { font-size: 0.875rem; }
-        .job-meta { font-size: 0.75rem; color: var(--color-text-muted); margin-top: var(--sp-1); }
-        .job-actions { margin-top: var(--sp-2); display: flex; gap: var(--sp-2); align-items: center; }
-        .job-actions select { width: auto; min-width: 140px; padding: var(--sp-1) var(--sp-2); font-size: 0.8rem; }
-        details summary { cursor: pointer; font-size: 0.75rem; color: var(--color-text-muted); margin-top: var(--sp-1); }
-        pre { background: var(--color-bg); padding: var(--sp-2); border-radius: var(--radius-sm); overflow-x: auto; font-size: 0.75rem; margin: var(--sp-1) 0; }
-
-        /* Rules */
-        .rule-row { display: flex; gap: var(--sp-2); align-items: center; margin-bottom: var(--sp-2); }
-        .rule-row input { flex: 2; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 0.8rem; }
-        .rule-row input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-light); }
-
-        /* Memory */
-        .memory-entry { display: flex; justify-content: space-between; align-items: center; padding: var(--sp-2) 0; border-bottom: 1px solid var(--color-bg); font-size: 0.8rem; }
-        .memory-entry:last-child { border-bottom: none; }
-        .stats-row { display: flex; gap: var(--sp-6); margin-bottom: var(--sp-3); font-size: 0.8rem; }
-        .stats-row span { font-weight: 600; }
-
-        /* Table */
-        table.summary { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin: var(--sp-2) 0; }
-        table.summary th, table.summary td { text-align: left; padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--color-border); }
-        table.summary th { font-weight: 600; background: var(--color-bg); text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em; color: var(--color-text-secondary); }
-
-        /* Setup wizard */
-        .wizard-step { padding: var(--sp-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: var(--sp-3); }
-        .wizard-step.completed { border-color: var(--color-success); background: var(--color-success-light); }
-        .wizard-step.active { border-color: var(--color-primary); }
-        .wizard-step-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-2); }
-        .wizard-step-header h3 { margin: 0; font-size: 0.9rem; }
-        .wizard-check { color: var(--color-success); font-weight: bold; }
-        .wizard-step.completed .wizard-body { display: none; }
-        .wizard-step:not(.active):not(.completed) .wizard-body { display: none; }
-        .wizard-step:not(.active):not(.completed) { opacity: 0.5; }
-
-        /* Toast */
-        .toast-container { position: fixed; top: var(--sp-4); right: var(--sp-4); z-index: 1000; display: flex; flex-direction: column; gap: var(--sp-2); pointer-events: none; }
-        .toast { padding: var(--sp-3) var(--sp-4); border-radius: var(--radius-md); font-size: 0.8rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15); opacity: 0; transform: translateX(40px); transition: all 250ms ease; pointer-events: auto; max-width: 360px; }
-        .toast.show { opacity: 1; transform: translateX(0); }
-        .toast-success { background: var(--color-success-light); color: var(--color-success); border-left: 3px solid var(--color-success); }
-        .toast-error { background: var(--color-danger-light); color: var(--color-danger); border-left: 3px solid var(--color-danger); }
-        .toast-info { background: var(--color-primary-light); color: var(--color-primary); border-left: 3px solid var(--color-primary); }
-
-        /* Overlay */
-        .auth-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 500; }
-        .auth-box { background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--sp-8); max-width: 400px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
-        .auth-box h2 { margin: 0 0 var(--sp-4) 0; font-size: 1.1rem; }
-
-        .vocab-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; font-size: 0.7rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); overflow: hidden; margin-top: var(--sp-2); background: var(--color-border); }
-        .vocab-col-header { background: var(--color-bg); padding: var(--sp-1) var(--sp-2); font-weight: 600; color: var(--color-text-secondary); }
-        .vocab-item { padding: 1px var(--sp-2); background: var(--color-bg-card); }
-        .vocab-item.added { background: var(--color-success-light); color: var(--color-success); font-weight: 600; }
-        .vocab-item.unchanged { color: var(--color-text-muted); }
-        .vocab-item.placeholder { visibility: hidden; background: var(--color-bg-card); }
-
-        .empty-state { text-align: center; padding: var(--sp-8) var(--sp-4); color: var(--color-text-muted); font-size: 0.85rem; }
-
-        /* Progress bar */
-        .progress-container { margin: var(--sp-3) 0; }
-        .progress-header { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.8rem; margin-bottom: var(--sp-1); }
-        .progress-header strong { font-size: 0.875rem; }
-        .progress-bar { height: 6px; background: var(--color-border); border-radius: var(--radius-pill); overflow: hidden; }
-        .progress-bar-fill { height: 100%; border-radius: var(--radius-pill); transition: width 300ms ease; background: var(--color-primary); }
-        .progress-bar-fill[data-state="complete"] { background: var(--color-success); }
-        .progress-bar-fill[data-state="error"] { background: var(--color-danger); }
-        .progress-bar-fill[data-state="mixed"] { background: var(--color-warning); }
-        .progress-detail { font-size: 0.75rem; color: var(--color-text-muted); margin-top: var(--sp-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .progress-elapsed { font-size: 0.7rem; color: var(--color-text-muted); }
-        .progress-errors-log { margin-top: var(--sp-2); }
-        .progress-errors-log summary { font-size: 0.75rem; color: var(--color-danger); cursor: pointer; }
-        .progress-errors-log .log-body { font-size: 0.7rem; padding: var(--sp-2); background: var(--color-danger-light); border-radius: var(--radius-sm); margin-top: var(--sp-1); max-height: 120px; overflow-y: auto; }
-        .progress-errors-log .log-body div { margin-bottom: 2px; }
-        .progress-summary { display: flex; gap: var(--sp-4); font-size: 0.8rem; margin-top: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); }
-        .progress-summary.success { background: var(--color-success-light); color: var(--color-success); }
-        .progress-summary.mixed { background: var(--color-warning-light); color: var(--color-warning); }
-        .progress-summary.fail { background: var(--color-danger-light); color: var(--color-danger); }
-
-        .hidden { display: none !important; }
-
-        @media (max-width: 640px) {
-            .form-row { flex-direction: column; }
-            .job-header { flex-direction: column; align-items: flex-start; }
-            .tabs { gap: 0; }
-            .tab { padding: var(--sp-2) var(--sp-3); font-size: 0.8rem; }
-        }
-    </style>
+  <script type="module" crossorigin src="/assets/index-WJxcwKF5.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-Dvz5Kv5B.css">
 </head>
 <body>
-<div class="app">
+<div class="app" x-data="{}" x-cloak>
+    <!-- Header -->
     <header class="header">
         <h1>Firefly III AI Categorizer</h1>
-        <div class="conn-badge conn-checking" id="firefly-conn">
+        <div class="conn-badge"
+             :class="{ 'conn-ok': $store.app.connection.status === 'ok', 'conn-fail': $store.app.connection.status === 'fail', 'conn-checking': $store.app.connection.status === 'checking' }">
             <span class="conn-dot"></span>
-            <span id="firefly-conn-text">checking...</span>
+            <span x-text="$store.app.connection.status === 'ok' ? `Firefly III v${$store.app.connection.version}` : ($store.app.connection.status === 'checking' ? 'checking...' : $store.app.connection.error || 'unreachable')"></span>
         </div>
     </header>
 
-    <nav class="tabs" role="tablist" id="tab-bar">
-        <button class="tab active" data-tab="setup" role="tab">Setup</button>
-        <button class="tab" data-tab="classify" role="tab">Classify</button>
-        <button class="tab" data-tab="rules" role="tab">Rules</button>
-        <button class="tab" data-tab="memory" role="tab">Memory</button>
-        <button class="tab" data-tab="settings" role="tab">Settings</button>
+    <!-- Tabs -->
+    <nav class="tabs" role="tablist" aria-label="Main navigation">
+        <template x-for="tab in ['setup','classify','rules','memory','settings']" :key="tab">
+            <button class="tab" role="tab"
+                    :class="{ active: $store.app.activeTab === tab }"
+                    :aria-selected="($store.app.activeTab === tab).toString()"
+                    @click="$store.app.switchTab(tab)"
+                    x-text="tab.charAt(0).toUpperCase() + tab.slice(1)">
+            </button>
+        </template>
     </nav>
 
-    <!-- Setup Tab -->
-    <div class="tab-content active" data-tab="setup">
+    <!-- ═══ SETUP TAB ═══ -->
+    <div x-show="$store.app.activeTab === 'setup'" role="tabpanel">
         <div class="card">
             <div class="card-title">Getting Started</div>
 
-            <div class="wizard-step active" id="wiz-step-1">
+            <!-- Step 1 -->
+            <div class="wizard-step" x-data="{ get done() { return $store.app.server?.hasFireflyPersonalToken && $store.app.connection.status === 'ok'; } }"
+                 :class="{ completed: done, active: !done }">
                 <div class="wizard-step-header">
                     <h3>Step 1: Connect to Firefly III</h3>
-                    <span class="wizard-check hidden" id="wiz-check-1">Done</span>
+                    <span class="wizard-check" x-show="done" x-text="`Connected v${$store.app.connection.version || '?'}`"></span>
                 </div>
-                <div class="wizard-body">
-                    <p style="font-size:0.8rem;color:var(--color-text-secondary);margin:0 0 var(--sp-3) 0">
-                        Go to Firefly III &rarr; Profile &rarr; OAuth tab &rarr; scroll to <strong>Personal Access Tokens</strong> (below OAuth Clients) &rarr; Create New Token.<br>
-                        <span style="color:var(--color-danger)">This is NOT an OAuth Client. Do not use Client ID or Secret.</span>
+                <div x-show="!done" x-data="{ token: '' }">
+                    <p class="text-sm text-muted" style="margin:0 0 var(--sp-3) 0">
+                        Go to Firefly III &rarr; Profile &rarr; OAuth tab &rarr; scroll to <strong>Personal Access Tokens</strong> &rarr; Create New Token.
+                        <span class="text-danger">Not an OAuth Client.</span>
                     </p>
                     <div class="form-group">
-                        <label for="wiz-firefly-token">Personal Access Token</label>
-                        <input id="wiz-firefly-token" type="password" autocomplete="off" placeholder="Paste the long token string">
+                        <label>Personal Access Token</label>
+                        <input type="password" x-model="token" autocomplete="off" placeholder="Paste the long token string">
                     </div>
-                    <button class="btn-primary" id="wiz-test-firefly">Save & Test Connection</button>
-                    <div class="form-status" id="wiz-firefly-status" data-state="missing"></div>
+                    <button class="btn-primary" :disabled="$store.app.loading.firefly || !token.trim()" @click="$store.app.testFirefly(token); token = ''">
+                        <span x-text="$store.app.loading.firefly ? 'Testing...' : 'Save & Test Connection'"></span>
+                    </button>
                 </div>
             </div>
 
-            <div class="wizard-step" id="wiz-step-2">
+            <!-- Step 2 -->
+            <div class="wizard-step" x-data="{ get step1() { return $store.app.server?.hasFireflyPersonalToken && $store.app.connection.status === 'ok'; }, get done() { return this.step1 && $store.app.activeProviderHasKey; }, provider: '', model: '', key: '' }"
+                 :class="{ completed: done, active: step1 && !done }"
+                 x-init="$watch('$store.app.server', s => { if (s) { provider = s.activeProvider; model = s.activeModel; } })">
                 <div class="wizard-step-header">
                     <h3>Step 2: Configure AI Provider</h3>
-                    <span class="wizard-check hidden" id="wiz-check-2">Done</span>
+                    <span class="wizard-check" x-show="done" x-text="`${$store.app.server?.activeProvider} / ${$store.app.server?.activeModel}`"></span>
                 </div>
-                <div class="wizard-body">
+                <div x-show="step1 && !done">
                     <div class="form-group">
                         <label>Provider</label>
-                        <div class="provider-radios" id="wiz-provider-radios"></div>
+                        <div class="provider-radios">
+                            <template x-for="[name, def] in Object.entries($store.app.server?.providers || {})" :key="name">
+                                <label><input type="radio" name="wiz-provider" :value="name" x-model="provider" @change="model = def.defaultModel"> <span x-text="def.label"></span></label>
+                            </template>
+                        </div>
                     </div>
                     <div class="form-group">
-                        <label for="wiz-model">Model</label>
-                        <select id="wiz-model"></select>
+                        <label>Model</label>
+                        <select x-model="model">
+                            <template x-for="m in ($store.app.server?.providers?.[provider]?.models || [])" :key="m.id">
+                                <option :value="m.id" x-text="m.label"></option>
+                            </template>
+                        </select>
                     </div>
                     <div class="form-group">
-                        <label for="wiz-ai-key">API Key</label>
-                        <input id="wiz-ai-key" type="password" autocomplete="off" placeholder="Paste your API key">
+                        <label>API Key</label>
+                        <input type="password" x-model="key" autocomplete="off" placeholder="Paste your API key">
                     </div>
-                    <button class="btn-primary" id="wiz-test-ai">Save & Test AI</button>
-                    <div class="form-status" id="wiz-ai-status" data-state="missing"></div>
+                    <button class="btn-primary" :disabled="$store.app.loading.ai || !key.trim()" @click="$store.app.saveSettings({ activeProvider: provider, activeModel: model, providerName: provider, providerApiKey: key }); key = ''">
+                        <span x-text="$store.app.loading.ai ? 'Saving...' : 'Save & Test AI'"></span>
+                    </button>
                 </div>
             </div>
 
-            <div class="wizard-step" id="wiz-step-3">
-                <div class="wizard-step-header">
-                    <h3>Step 3: Ready!</h3>
-                    <span class="wizard-check hidden" id="wiz-check-3">Done</span>
-                </div>
-                <div class="wizard-body">
-                    <p style="font-size:0.85rem;margin:0 0 var(--sp-3) 0">Everything is configured. You can now categorize transactions.</p>
-                    <button class="btn-success" id="wiz-start">Start Categorizing</button>
+            <!-- Step 3 -->
+            <div class="wizard-step" :class="{ active: $store.app.isSetupComplete }">
+                <div class="wizard-step-header"><h3>Step 3: Ready!</h3></div>
+                <div x-show="$store.app.isSetupComplete">
+                    <p class="text-sm" style="margin:0 0 var(--sp-3) 0">Everything is configured.</p>
+                    <button class="btn-success" @click="$store.app.switchTab('classify')">Start Categorizing</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Classify Tab -->
-    <div class="tab-content" data-tab="classify">
+    <!-- ═══ CLASSIFY TAB ═══ -->
+    <div x-show="$store.app.activeTab === 'classify'" role="tabpanel">
+        <!-- Batch -->
         <div class="card">
             <div class="card-title">Batch Categorization</div>
             <div class="card-subtitle">Analyze uncategorized transactions, review proposals, then apply.</div>
             <div class="btn-group" style="margin-top:0">
-                <button class="btn-primary" id="analyze-btn">Analyze Uncategorized</button>
-                <button class="btn-secondary btn-sm hidden" id="cancel-analyze-btn">Cancel</button>
+                <button class="btn-primary" :disabled="$store.batch.analyzing" @click="$store.batch.startAnalysis()">
+                    <span x-text="$store.batch.analyzing ? 'Analyzing...' : 'Analyze Uncategorized'"></span>
+                </button>
+                <button class="btn-secondary btn-sm" x-show="$store.batch.analyzing" @click="$store.batch.cancelAnalysis()">Cancel</button>
             </div>
-            <div id="analyze-progress" class="hidden"></div>
-            <div id="vocab-diff"></div>
-            <div id="analysis-results" class="hidden" style="margin-top:var(--sp-4)">
-                <table class="summary" id="summary-table">
+
+            <!-- Progress -->
+            <div x-show="$store.batch.analyzing || $store.batch.analyzeProgress.processed > 0" class="progress-container">
+                <div class="progress-header">
+                    <span><strong x-text="`${$store.batch.analyzeProgress.processed} of ${$store.batch.analyzeProgress.total}`"></strong></span>
+                    <span class="progress-elapsed" x-text="formatElapsed($store.batch.analyzeProgress.elapsed)"></span>
+                </div>
+                <div class="progress-bar" role="progressbar" :aria-valuenow="$store.batch.analyzeProgress.pct" aria-valuemin="0" aria-valuemax="100">
+                    <div class="progress-bar-fill" :style="`width:${$store.batch.analyzeProgress.pct}%`"></div>
+                </div>
+                <div class="progress-detail" x-text="$store.batch.analyzeProgress.current"></div>
+            </div>
+
+            <!-- Vocabulary diff -->
+            <template x-if="$store.batch.vocabulary.initial.length > 0">
+                <details :open="$store.batch.vocabulary.added?.length > 0" style="margin-top:var(--sp-2)">
+                    <summary class="text-xs text-muted" x-text="`Category Vocabulary (${$store.batch.vocabulary.initial.length} initial${$store.batch.vocabulary.added?.length ? ` + ${$store.batch.vocabulary.added.length} new` : ''})`"></summary>
+                    <div class="vocab-diff">
+                        <div class="vocab-col-header">Initial (Firefly)</div>
+                        <div class="vocab-col-header">Modified (AI)</div>
+                        <template x-for="c in $store.batch.vocabulary.initial" :key="'i-'+c">
+                            <div style="display:contents"><div class="vocab-item unchanged" x-text="c"></div><div class="vocab-item unchanged" x-text="c"></div></div>
+                        </template>
+                        <template x-for="c in ($store.batch.vocabulary.added || [])" :key="'a-'+c">
+                            <div style="display:contents"><div class="vocab-item placeholder">&nbsp;</div><div class="vocab-item added" x-text="`+ ${c}`"></div></div>
+                        </template>
+                    </div>
+                </details>
+            </template>
+
+            <!-- Errors log -->
+            <template x-if="$store.batch.analyzeErrors.length > 0">
+                <details class="progress-errors-log">
+                    <summary x-text="`${$store.batch.analyzeErrors.length} error(s) during analysis`"></summary>
+                    <div class="log-body"><template x-for="e in $store.batch.analyzeErrors" :key="e"><div x-text="e"></div></template></div>
+                </details>
+            </template>
+
+            <!-- Results -->
+            <div x-show="$store.batch.hasResults" style="margin-top:var(--sp-4)">
+                <!-- Merge UI -->
+                <div x-show="$store.batch.hasDuplicates" class="merge-section">
+                    <strong class="text-sm" style="color:var(--color-warning)">Duplicate categories detected:</strong>
+                    <template x-for="(dup, i) in ($store.batch.result?.duplicates || [])" :key="i">
+                        <div style="display:flex;gap:var(--sp-2);align-items:center;margin-top:var(--sp-1);font-size:0.8rem">
+                            <span x-text="dup.variants.join(', ')"></span><span>&rarr;</span>
+                            <select @change="$store.batch.mergeSelections[i] = $event.target.value" class="filter-select">
+                                <template x-for="v in dup.variants" :key="v"><option :value="v" :selected="v === dup.recommended" x-text="v"></option></template>
+                            </select>
+                        </div>
+                    </template>
+                    <button class="btn-primary btn-sm" style="margin-top:var(--sp-2)" @click="$store.batch.applyMerge()">Apply Merge</button>
+                </div>
+
+                <!-- Summary table -->
+                <table class="summary">
                     <thead><tr><th>Category</th><th>Transactions</th><th>Merchants</th></tr></thead>
-                    <tbody></tbody>
+                    <tbody>
+                        <template x-for="s in ($store.batch.result?.summary || [])" :key="s.category">
+                            <tr><td x-text="s.category"></td><td x-text="s.transactionCount"></td><td x-text="s.merchants.join(', ')"></td></tr>
+                        </template>
+                    </tbody>
                 </table>
-                <div id="merge-section" class="hidden" style="margin-top:var(--sp-4);padding:var(--sp-3);background:var(--color-warning-light);border-radius:var(--radius-md)">
-                    <strong style="font-size:0.85rem;color:var(--color-warning)">Duplicate categories detected — select which name to keep:</strong>
-                    <div id="merge-list" style="margin-top:var(--sp-2)"></div>
-                    <button class="btn-primary btn-sm" id="apply-merge-btn" style="margin-top:var(--sp-2)">Apply Merge</button>
+
+                <!-- New categories -->
+                <div x-show="$store.batch.hasNewCategories" style="margin-top:var(--sp-4)">
+                    <strong class="text-sm">Suggested New Categories</strong>
+                    <template x-for="p in ($store.batch.result?.newCategoryProposals || [])" :key="p.suggestedCategoryName">
+                        <label style="display:block;font-size:0.8rem;margin-top:var(--sp-1)">
+                            <input type="checkbox" :checked="$store.batch.newCategoryChecked[p.suggestedCategoryName] !== false" @change="$store.batch.newCategoryChecked[p.suggestedCategoryName] = $event.target.checked">
+                            Create "<strong x-text="p.suggestedCategoryName"></strong>" (<span x-text="p.transactionCount"></span> txns)
+                        </label>
+                    </template>
                 </div>
-                <div id="new-cat-section" class="hidden" style="margin-top:var(--sp-4)">
-                    <strong style="font-size:0.8rem">Suggested New Categories</strong>
-                    <div id="new-cat-list" style="margin-top:var(--sp-2)"></div>
-                </div>
+
+                <!-- Apply -->
                 <div class="btn-group">
-                    <button class="btn-success" id="apply-btn">Apply All Proposals</button>
+                    <button class="btn-success" :disabled="$store.batch.applying" @click="$store.batch.applyAll()">
+                        <span x-text="$store.batch.applying ? 'Applying...' : 'Apply All Proposals'"></span>
+                    </button>
                 </div>
-                <div id="apply-progress" class="hidden"></div>
+
+                <!-- Apply progress -->
+                <div x-show="$store.batch.applying || $store.batch.applyProgress.applied > 0" class="progress-container" style="margin-top:var(--sp-2)">
+                    <div class="progress-bar"><div class="progress-bar-fill" :style="`width:${$store.batch.applyProgress.pct}%`"></div></div>
+                    <div class="progress-detail" x-text="`Applied: ${$store.batch.applyProgress.applied}, Failed: ${$store.batch.applyProgress.failed}, Total: ${$store.batch.applyProgress.total}`"></div>
+                </div>
             </div>
         </div>
 
+        <!-- Jobs -->
         <div class="card">
             <div class="card-title">Classification Jobs</div>
-            <div style="margin-bottom:var(--sp-3)">
-                <select id="job-filter" style="width:auto;padding:var(--sp-1) var(--sp-2);font-size:0.8rem;border:1px solid var(--color-border);border-radius:var(--radius-md)">
-                    <option value="all">All Jobs</option>
-                    <option value="review">Needs Review</option>
-                </select>
-            </div>
-            <div id="jobs-mount"></div>
+            <select class="filter-select" x-model="$store.jobs.filter" style="margin-bottom:var(--sp-3)">
+                <option value="all">All Jobs</option>
+                <option value="review">Needs Review</option>
+            </select>
+            <template x-if="$store.jobs.filteredJobs.length === 0">
+                <div class="empty-state">No jobs yet. Use the wizard or Analyze button to start categorizing.</div>
+            </template>
+            <template x-for="job in $store.jobs.filteredJobs" :key="job.id">
+                <div class="job" :class="{ 'needs-review': job.needs_review === 1 }" x-data="{ selectedCat: '', correcting: false }">
+                    <div class="job-header">
+                        <strong x-text="`${job.destination_name || ''} → ${job.corrected_category || job.category || '???'}`"></strong>
+                        <div>
+                            <span class="badge" :class="badgeClass(job.source)" x-text="badgeLabel(job.source)"></span>
+                            <span x-text="job.confidence != null ? `${Math.round(job.confidence * 100)}%` : ''"></span>
+                        </div>
+                    </div>
+                    <div class="job-meta"><span x-text="new Date(job.created).toLocaleString()"></span> | <span x-text="job.description || ''"></span></div>
+                    <template x-if="job.prompt">
+                        <details><summary>Prompt & Response</summary><pre x-text="job.prompt"></pre><pre x-text="job.response || ''"></pre></details>
+                    </template>
+                    <div class="job-actions">
+                        <select x-model="selectedCat" class="filter-select" aria-label="Correction category">
+                            <option value="">-- correct --</option>
+                            <template x-for="cat in $store.app.categories" :key="cat.name"><option :value="cat.name" x-text="cat.name"></option></template>
+                        </select>
+                        <button class="btn-secondary btn-sm" :disabled="correcting || !selectedCat" @click="correcting = true; $store.jobs.correctJob(job.id, selectedCat, ($store.app.categories.find(c => c.name === selectedCat)?.id || '')).finally(() => { correcting = false; selectedCat = ''; })">Correct</button>
+                    </div>
+                </div>
+            </template>
         </div>
     </div>
 
-    <!-- Rules Tab -->
-    <div class="tab-content" data-tab="rules">
-        <div class="card">
+    <!-- ═══ RULES TAB ═══ -->
+    <div x-show="$store.app.activeTab === 'rules'" role="tabpanel">
+        <div class="card" x-data="{ rules: [], saving: false }" x-init="$watch('$store.app.server?.keywordRules', v => { if (v) rules = JSON.parse(JSON.stringify(v)); }); if ($store.app.server?.keywordRules) rules = JSON.parse(JSON.stringify($store.app.server.keywordRules));">
             <div class="card-title">Keyword Rules</div>
-            <div class="card-subtitle">Keyword matches bypass AI and save API cost. Checked before AI classification.</div>
-            <div id="rules-list"></div>
+            <div class="card-subtitle">Keyword matches bypass AI and save API cost.</div>
+            <template x-if="rules.length === 0"><div class="empty-state">No keyword rules defined.</div></template>
+            <template x-for="(rule, i) in rules" :key="i">
+                <div class="rule-row">
+                    <input type="text" :value="rule.keywords?.join(', ') || ''" @input="rules[i] = { ...rules[i], keywords: $event.target.value.split(',').map(s => s.trim()).filter(Boolean) }" placeholder="uber, lyft, bolt">
+                    <span class="rule-arrow">&rarr;</span>
+                    <input type="text" :value="rule.category || ''" @input="rules[i] = { ...rules[i], category: $event.target.value }" placeholder="Category name">
+                    <button class="btn-danger btn-sm" @click="rules = rules.filter((_, j) => j !== i)" aria-label="Remove rule">&times;</button>
+                </div>
+            </template>
             <div class="btn-group">
-                <button class="btn-secondary" id="add-rule-btn">+ Add Rule</button>
-                <button class="btn-primary" id="save-rules-btn">Save Rules</button>
+                <button class="btn-secondary" @click="rules = [...rules, { keywords: [], category: '' }]">+ Add Rule</button>
+                <button class="btn-primary" :disabled="saving" @click="saving = true; $store.app.saveRules(rules).finally(() => saving = false)">
+                    <span x-text="saving ? 'Saving...' : 'Save Rules'"></span>
+                </button>
             </div>
         </div>
     </div>
 
-    <!-- Memory Tab -->
-    <div class="tab-content" data-tab="memory">
+    <!-- ═══ MEMORY TAB ═══ -->
+    <div x-show="$store.app.activeTab === 'memory'" role="tabpanel">
         <div class="card">
             <div class="card-title">Merchant Memory</div>
-            <div class="card-subtitle">Learned merchant-to-category mappings from past classifications.</div>
-            <div class="stats-row" id="memory-stats"></div>
-            <div id="memory-list"></div>
+            <div class="card-subtitle">Learned merchant-to-category mappings.</div>
+            <div class="stats-row">
+                <div><span x-text="$store.app.server?.memoryStats?.total || 0"></span> learned</div>
+                <div><span x-text="$store.app.server?.memoryStats?.user_corrected || 0"></span> corrected</div>
+            </div>
+            <template x-if="$store.app.memoryEntries.length === 0"><div class="empty-state">No merchants learned yet.</div></template>
+            <template x-for="e in $store.app.memoryEntries" :key="e.raw_name">
+                <div class="memory-entry">
+                    <div><strong x-text="e.raw_name"></strong> &rarr; <span x-text="e.category"></span> <span class="text-muted text-xs" x-text="`(${e.corrected ? 'corrected' : e.source}, ${e.count}x)`"></span></div>
+                </div>
+            </template>
             <div class="btn-group">
-                <button class="btn-danger btn-sm" id="clear-memory-btn">Clear All Memory</button>
+                <button class="btn-danger btn-sm" x-data="{ confirming: false }" @click="if (confirming) { $store.app.clearMemory(); confirming = false; } else { confirming = true; }" x-text="confirming ? 'Click again to confirm' : 'Clear All Memory'"></button>
             </div>
         </div>
     </div>
 
-    <!-- Settings Tab -->
-    <div class="tab-content" data-tab="settings">
-        <div class="card">
+    <!-- ═══ SETTINGS TAB ═══ -->
+    <div x-show="$store.app.activeTab === 'settings'" role="tabpanel">
+        <div class="card" x-data="{ fireflyToken: '', provider: '', model: '', providerKey: '', customModel: false, customModelId: '' }"
+             x-init="$watch('$store.app.server', s => { if (s) { provider = s.activeProvider; model = s.activeModel; } }); if ($store.app.server) { provider = $store.app.server.activeProvider; model = $store.app.server.activeModel; }">
             <div class="card-title">Configuration</div>
-            <form id="settings-form">
+
+            <!-- Firefly -->
+            <div class="form-group">
+                <label>Firefly III URL</label>
+                <input type="url" :value="$store.app.server?.fireflyUrl || ''" disabled title="Set via FIREFLY_URL env var">
+                <div class="form-status" data-state="configured">set via environment</div>
+            </div>
+            <div class="form-group">
+                <label>Firefly Personal Token</label>
+                <input type="password" x-model="fireflyToken" autocomplete="off" placeholder="Paste new token to update">
+                <div class="form-status" :data-state="fireflyToken.trim() ? 'pending' : ($store.app.server?.hasFireflyPersonalToken ? 'configured' : 'missing')"
+                     x-text="fireflyToken.trim() ? 'new value (save to apply)' : ($store.app.server?.hasFireflyPersonalToken ? `configured (${$store.app.server.fireflyPersonalTokenPreview})` : 'not configured')"></div>
+            </div>
+            <button class="btn-secondary btn-sm" :disabled="$store.app.loading.firefly" @click="$store.app.testFirefly(fireflyToken); fireflyToken = ''">
+                <span x-text="$store.app.loading.firefly ? 'Testing...' : 'Test Firefly Connection'"></span>
+            </button>
+
+            <hr class="form-divider">
+
+            <!-- AI Provider -->
+            <div class="form-group">
+                <label>AI Provider</label>
+                <div class="provider-radios">
+                    <template x-for="[name, def] in Object.entries($store.app.server?.providers || {})" :key="name">
+                        <label><input type="radio" name="settings-provider" :value="name" x-model="provider" @change="model = def.defaultModel"> <span x-text="def.label"></span></label>
+                    </template>
+                </div>
+            </div>
+            <div class="form-row">
                 <div class="form-group">
-                    <label for="firefly-url">Firefly III URL</label>
-                    <input id="firefly-url" type="url" placeholder="http://app:8080" disabled title="Set via FIREFLY_URL env var">
-                    <div class="form-status" data-state="configured" id="firefly-url-status">set via environment</div>
+                    <label>Model</label>
+                    <select x-model="model" x-show="!customModel">
+                        <template x-for="m in ($store.app.server?.providers?.[provider]?.models || [])" :key="m.id"><option :value="m.id" x-text="m.label"></option></template>
+                    </select>
+                    <input x-show="customModel" type="text" x-model="customModelId" placeholder="e.g. gpt-4o-2024-08-06">
+                </div>
+                <div class="form-group"><label><input type="checkbox" x-model="customModel"> Custom model</label></div>
+            </div>
+            <div class="form-group">
+                <label x-text="`API Key for ${$store.app.server?.providers?.[provider]?.label || provider}`"></label>
+                <input type="password" x-model="providerKey" autocomplete="off" placeholder="Paste API key">
+                <div class="form-status" :data-state="providerKey.trim() ? 'pending' : ($store.app.server?.providers?.[provider]?.hasApiKey ? 'configured' : 'missing')"
+                     x-text="providerKey.trim() ? 'new value (save to apply)' : ($store.app.server?.providers?.[provider]?.hasApiKey ? `configured (${$store.app.server?.providers?.[provider]?.apiKeyPreview})` : 'not configured')"></div>
+            </div>
+            <template x-for="[name, def] in Object.entries($store.app.server?.providers || {}).filter(([n]) => n !== provider)" :key="name">
+                <div class="text-sm text-muted" x-text="`${def.label} API Key: ${def.hasApiKey ? `configured (${def.apiKeyPreview})` : 'not configured'}`"></div>
+            </template>
+            <button class="btn-secondary btn-sm" style="margin-top:var(--sp-2)" :disabled="$store.app.loading.ai" @click="$store.app.testAi(provider, providerKey); providerKey = ''">
+                <span x-text="$store.app.loading.ai ? 'Testing...' : 'Test AI Connection'"></span>
+            </button>
+
+            <hr class="form-divider">
+
+            <!-- Behavior -->
+            <div class="form-row" x-data="{ threshold: $store.app.server?.confidenceThreshold || 0.5, webhook: $store.app.server?.enableWebhook ?? true }"
+                 x-init="$watch('$store.app.server', s => { if (s) { threshold = s.confidenceThreshold; webhook = s.enableWebhook; } })">
+                <div class="form-group">
+                    <label>Confidence Threshold</label>
+                    <select x-model="threshold">
+                        <option value="0.3">0.3 (aggressive)</option>
+                        <option value="0.5">0.5 (balanced)</option>
+                        <option value="0.7">0.7 (conservative)</option>
+                        <option value="0.85">0.85 (strict)</option>
+                    </select>
                 </div>
                 <div class="form-group">
-                    <label for="firefly-token">Firefly Personal Token</label>
-                    <input id="firefly-token" type="password" autocomplete="off" placeholder="Paste new token to update">
-                    <div class="form-status" id="firefly-token-status" data-state="missing"></div>
+                    <label><input type="checkbox" x-model="webhook"> Enable webhook</label>
+                    <div class="form-status">Auto-categorize new transactions</div>
                 </div>
-                <button type="button" class="btn-secondary btn-sm" id="test-firefly-btn">Test Firefly Connection</button>
+            </div>
 
-                <hr class="form-divider">
+            <hr class="form-divider">
 
-                <div class="form-group">
-                    <label>AI Provider</label>
-                    <div class="provider-radios" id="provider-radios"></div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="model-select">Model</label>
-                        <select id="model-select"></select>
-                    </div>
-                    <div class="form-group">
-                        <label><input type="checkbox" id="custom-model-check"> Custom model</label>
-                        <input id="custom-model-input" type="text" placeholder="e.g. gpt-4o-2024-08-06" class="hidden">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label id="provider-key-label">API Key</label>
-                    <input id="provider-key" type="password" autocomplete="off" placeholder="Paste API key">
-                    <div class="form-status" id="provider-key-status" data-state="missing"></div>
-                </div>
-                <div id="other-providers-row" style="font-size:0.8rem;color:var(--color-text-muted);margin-bottom:var(--sp-4)"></div>
-                <button type="button" class="btn-secondary btn-sm" id="test-ai-btn">Test AI Connection</button>
-
-                <hr class="form-divider">
-
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="threshold-select">Confidence Threshold</label>
-                        <select id="threshold-select">
-                            <option value="0.3">0.3 (aggressive)</option>
-                            <option value="0.5">0.5 (balanced)</option>
-                            <option value="0.7">0.7 (conservative)</option>
-                            <option value="0.85">0.85 (strict)</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label><input type="checkbox" id="webhook-toggle"> Enable webhook</label>
-                        <div class="form-status">Auto-categorize new transactions (restart required)</div>
-                    </div>
-                </div>
-
-                <hr class="form-divider">
-
-                <div class="btn-group">
-                    <button type="submit" class="btn-primary" id="save-btn">Save All Settings</button>
-                </div>
-            </form>
+            <div class="btn-group">
+                <button class="btn-primary" :disabled="$store.app.loading.settingsSave"
+                        @click="$store.app.saveSettings({ activeProvider: provider, activeModel: customModel ? customModelId : model, fireflyPersonalToken: fireflyToken || undefined, providerName: provider, providerApiKey: providerKey || undefined, confidenceThreshold: parseFloat($el.closest('[x-data]').querySelector('[x-model=threshold]')?.value || 0.5), enableWebhook: $el.closest('[x-data]').querySelector('[x-model=webhook]')?.checked ?? true }); fireflyToken = ''; providerKey = ''">
+                    <span x-text="$store.app.loading.settingsSave ? 'Saving...' : 'Save All Settings'"></span>
+                </button>
+            </div>
         </div>
     </div>
 </div>
 
-<!-- Auth overlay -->
-<div class="auth-overlay hidden" id="auth-overlay">
+<!-- Auth Overlay -->
+<div class="auth-overlay" x-show="$store.app.authOverlayVisible" x-cloak x-transition.opacity x-trap.noscroll="$store.app.authOverlayVisible" role="dialog" aria-modal="true">
     <div class="auth-box">
         <h2>Authentication Required</h2>
         <div class="form-group">
-            <label for="auth-token-input">API Token</label>
-            <input id="auth-token-input" type="password" placeholder="Enter CATEGORIZER_API_TOKEN">
+            <label for="auth-token">API Token</label>
+            <input id="auth-token" type="password" x-model="$store.app._authInput" placeholder="Enter CATEGORIZER_API_TOKEN" @keydown.enter="$store.app.authenticate($store.app._authInput)">
         </div>
-        <button class="btn-primary" id="auth-submit-btn" style="width:100%">Authenticate</button>
-        <div class="form-status" id="auth-alert" style="margin-top:var(--sp-2)"></div>
+        <button class="btn-primary" style="width:100%" @click="$store.app.authenticate($store.app._authInput)">Authenticate</button>
+        <div class="form-status" x-show="$store.app.authError" data-state="missing" x-text="$store.app.authError"></div>
     </div>
 </div>
 
-<!-- Toast container -->
-<div class="toast-container" id="toast-container"></div>
+<!-- Toasts -->
+<div class="toast-container" role="status" aria-live="polite">
+    <template x-for="t in $store.toast.items" :key="t.id">
+        <div class="toast" :class="`toast-${t.type}`" :class="{ show: t.visible }" role="alert" x-text="t.message"></div>
+    </template>
+</div>
 
-<script src="/socket.io/socket.io.js"></script>
 <script>
-let socket = io({ auth: { token: localStorage.getItem('categorizer_api_token') || '' } });
-const STATE = { server: null, categories: [], allJobs: [], analysisResult: null, activeTab: 'setup', dirty: {} };
-const $ = (s) => document.querySelector(s);
-const $$ = (s) => document.querySelectorAll(s);
-const esc = (s) => { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
-const escAttr = (s) => String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-function showToast(msg, type = 'info', ms = 4000) {
-    const t = document.createElement('div');
-    t.className = `toast toast-${type}`;
-    t.textContent = msg;
-    $('#toast-container').appendChild(t);
-    requestAnimationFrame(() => t.classList.add('show'));
-    setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, ms);
-}
-function setLoading(sel, loading) {
-    const b = $(sel); if (!b) return;
-    b.disabled = loading;
-    if (loading) { b.dataset.orig = b.textContent; b.textContent = 'Loading...'; }
-    else if (b.dataset.orig) { b.textContent = b.dataset.orig; }
-}
-const getAuthToken = () => localStorage.getItem('categorizer_api_token') || '';
-const setAuthToken = (t) => { if (t) localStorage.setItem('categorizer_api_token', t); else localStorage.removeItem('categorizer_api_token'); };
-const api = async (method, url, body) => {
-    const opts = { method, headers: { 'Content-Type': 'application/json' } };
-    const tok = getAuthToken();
-    if (tok) opts.headers['Authorization'] = `Bearer ${tok}`;
-    if (body !== undefined) opts.body = JSON.stringify(body);
-    const r = await fetch(url, opts);
-    if (r.status === 401 || r.status === 403) { showAuthOverlay(); throw new Error('Authentication required'); }
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
-    return data;
-};
-function reconnectSocket() {
-    socket.auth = { token: getAuthToken() };
-    socket.disconnect().connect();
-}
-
-// ─── Tabs ─────────────────────────────────
-function switchTab(name) {
-    STATE.activeTab = name;
-    $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-    $$('.tab-content').forEach(c => c.classList.toggle('active', c.dataset.tab === name));
-}
-$('#tab-bar').addEventListener('click', (e) => { if (e.target.classList.contains('tab')) switchTab(e.target.dataset.tab); });
-
-// ─── Auth ─────────────────────────────────
-function showAuthOverlay() { $('#auth-overlay').classList.remove('hidden'); }
-$('#auth-submit-btn').addEventListener('click', async () => {
-    const tok = $('#auth-token-input').value.trim();
-    if (!tok) return;
-    setAuthToken(tok);
-    try {
-        await loadSettings();
-        $('#auth-overlay').classList.add('hidden');
-        reconnectSocket();
-        loadMemory();
-    } catch {
-        setAuthToken('');
-        const s = $('#auth-alert'); s.textContent = 'Invalid token'; s.dataset.state = 'missing';
-    }
-});
-
-// ─── Settings ─────────────────────────────
-async function loadSettings() {
-    STATE.server = await api('GET', '/api/settings');
-    STATE.categories = await api('GET', '/api/categories').catch(() => []);
-    renderAll();
-}
-
-function renderAll() {
-    const s = STATE.server; if (!s) return;
-    renderConnBadge(s.fireflyStatus);
-    renderSettingsForm(s);
-    renderWizard(s);
-    if (s.keywordRules) renderRules(s.keywordRules);
-}
-
-function renderConnBadge(status) {
-    const el = $('#firefly-conn');
-    const txt = $('#firefly-conn-text');
-    if (status?.connected) { el.className = 'conn-badge conn-ok'; txt.textContent = `Firefly III v${status.version}`; }
-    else { el.className = 'conn-badge conn-fail'; txt.textContent = status?.error || 'unreachable'; }
-}
-
-function renderSettingsForm(s) {
-    // Firefly URL (read-only, from env)
-    if (s.fireflyUrl) { $('#firefly-url').value = s.fireflyUrl; }
-
-    const ftStatus = $('#firefly-token-status');
-    ftStatus.textContent = s.hasFireflyPersonalToken ? `configured (${s.fireflyPersonalTokenPreview})` : 'not configured';
-    ftStatus.dataset.state = s.hasFireflyPersonalToken ? 'configured' : 'missing';
-
-    const radios = $('#provider-radios'); radios.innerHTML = '';
-    for (const [name, def] of Object.entries(s.providers)) {
-        radios.innerHTML += `<label><input type="radio" name="active-provider" value="${name}" ${s.activeProvider === name ? 'checked' : ''}> ${def.label}</label>`;
-    }
-    radios.querySelectorAll('input[type=radio]').forEach(r => r.addEventListener('change', (e) => renderProviderDetails(e.target.value)));
-    renderProviderDetails(s.activeProvider);
-
-    $('#threshold-select').value = String(s.confidenceThreshold);
-    $('#webhook-toggle').checked = s.enableWebhook;
-
-    let otherHtml = '';
-    for (const [name, def] of Object.entries(s.providers)) {
-        if (name === s.activeProvider) continue;
-        otherHtml += `${def.label} API Key: ${def.hasApiKey ? `configured (${def.apiKeyPreview})` : 'not configured'}<br>`;
-    }
-    $('#other-providers-row').innerHTML = otherHtml;
-}
-
-function renderProviderDetails(prov) {
-    const s = STATE.server; const def = s.providers[prov]; if (!def) return;
-    const sel = $('#model-select'); sel.innerHTML = '';
-    for (const m of def.models) { const o = document.createElement('option'); o.value = m.id; o.textContent = m.label; if (m.id === s.activeModel) o.selected = true; sel.appendChild(o); }
-    $('#provider-key-label').textContent = `API Key for ${def.label}`;
-    const ks = $('#provider-key-status');
-    ks.textContent = def.hasApiKey ? `configured (${def.apiKeyPreview})` : 'not configured';
-    ks.dataset.state = def.hasApiKey ? 'configured' : 'missing';
-    $('#provider-key').value = '';
-}
-
-// Dirty tracking on inputs
-['firefly-token', 'provider-key'].forEach(id => {
-    $(`#${id}`).addEventListener('input', (e) => {
-        const statusEl = $(`#${id}-status`);
-        if (!statusEl) return;
-        if (e.target.value.trim()) {
-            statusEl.textContent = 'new value (save to apply)';
-            statusEl.dataset.state = 'pending';
-        } else if (STATE.server) {
-            // Restore server state for this field only, don't re-render everything
-            if (id === 'firefly-token') {
-                statusEl.textContent = STATE.server.hasFireflyPersonalToken ? `configured (${STATE.server.fireflyPersonalTokenPreview})` : 'not configured';
-                statusEl.dataset.state = STATE.server.hasFireflyPersonalToken ? 'configured' : 'missing';
-            } else {
-                const prov = document.querySelector('input[name="active-provider"]:checked')?.value;
-                const def = prov && STATE.server.providers[prov];
-                if (def) {
-                    statusEl.textContent = def.hasApiKey ? `configured (${def.apiKeyPreview})` : 'not configured';
-                    statusEl.dataset.state = def.hasApiKey ? 'configured' : 'missing';
-                }
-            }
-        }
-    });
-});
-
-$('#custom-model-check').addEventListener('change', (e) => { $('#custom-model-input').classList.toggle('hidden', !e.target.checked); });
-
-// Atomic save
-$('#settings-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    setLoading('#save-btn', true);
-    try {
-        const provider = document.querySelector('input[name="active-provider"]:checked')?.value;
-        const model = $('#custom-model-check').checked ? $('#custom-model-input').value : $('#model-select').value;
-        const providerKey = $('#provider-key').value.trim();
-        const fireflyToken = $('#firefly-token').value.trim();
-        await api('PUT', '/api/settings', {
-            activeProvider: provider,
-            activeModel: model,
-            fireflyPersonalToken: fireflyToken || undefined,
-            providerName: provider,
-            providerApiKey: providerKey || undefined,
-            confidenceThreshold: parseFloat($('#threshold-select').value),
-            enableWebhook: $('#webhook-toggle').checked,
-        });
-        $('#firefly-token').value = '';
-        $('#provider-key').value = '';
-        await loadSettings();
-        showToast('Settings saved', 'success');
-    } catch (err) { showToast(err.message, 'error'); }
-    finally { setLoading('#save-btn', false); }
-});
-
-// Test Firefly connection (saves token first if entered)
-$('#test-firefly-btn').addEventListener('click', async () => {
-    setLoading('#test-firefly-btn', true);
-    try {
-        const fireflyToken = $('#firefly-token').value.trim();
-        if (fireflyToken) {
-            await api('PUT', '/api/settings', { fireflyPersonalToken: fireflyToken });
-            $('#firefly-token').value = '';
-        }
-        const status = await api('GET', '/api/firefly/status');
-        await loadSettings();
-        showToast(status.connected ? `Firefly III v${status.version} connected!` : `Firefly unreachable: ${status.error}`, status.connected ? 'success' : 'error');
-    } catch (err) { showToast(err.message, 'error'); }
-    finally { setLoading('#test-firefly-btn', false); }
-});
-
-// Test AI provider connection (saves key first if entered)
-$('#test-ai-btn').addEventListener('click', async () => {
-    const provider = document.querySelector('input[name="active-provider"]:checked')?.value;
-    if (!provider) return showToast('Select a provider first', 'error');
-    setLoading('#test-ai-btn', true);
-    try {
-        const providerKey = $('#provider-key').value.trim();
-        if (providerKey) {
-            await api('PUT', '/api/settings/tokens', { provider, apiKey: providerKey });
-            $('#provider-key').value = '';
-        }
-        const r = await api('POST', '/api/settings/test', { provider });
-        showToast(r.success ? `${provider} connection successful!` : `${provider} failed: ${r.error}`, r.success ? 'success' : 'error');
-        await loadSettings();
-    } catch (err) { showToast(err.message, 'error'); }
-    finally { setLoading('#test-ai-btn', false); }
-});
-
-// ─── Setup Wizard ─────────────────────────
-function renderWizard(s) {
-    const wizRadios = $('#wiz-provider-radios'); wizRadios.innerHTML = '';
-    for (const [name, def] of Object.entries(s.providers)) {
-        wizRadios.innerHTML += `<label><input type="radio" name="wiz-provider" value="${name}" ${s.activeProvider === name ? 'checked' : ''}> ${def.label}</label>`;
-    }
-    wizRadios.querySelectorAll('input').forEach(r => r.addEventListener('change', (e) => {
-        const def = s.providers[e.target.value]; if (!def) return;
-        const sel = $('#wiz-model'); sel.innerHTML = '';
-        for (const m of def.models) { const o = document.createElement('option'); o.value = m.id; o.textContent = m.label; sel.appendChild(o); }
-    }));
-    // Pre-populate model select
-    const activeDef = s.providers[s.activeProvider];
-    if (activeDef) {
-        const sel = $('#wiz-model'); sel.innerHTML = '';
-        for (const m of activeDef.models) { const o = document.createElement('option'); o.value = m.id; o.textContent = m.label; if (m.id === s.activeModel) o.selected = true; sel.appendChild(o); }
-    }
-
-    // Step completion state
-    const step1Done = s.hasFireflyPersonalToken && s.fireflyStatus?.connected;
-    const activeProviderDef = s.providers[s.activeProvider];
-    const step2Done = activeProviderDef?.hasApiKey;
-
-    if (step1Done) { $('#wiz-step-1').classList.add('completed'); $('#wiz-step-1').classList.remove('active'); $('#wiz-check-1').classList.remove('hidden'); $('#wiz-check-1').textContent = `Connected v${s.fireflyStatus?.version || '?'}`; }
-    else { $('#wiz-step-1').classList.remove('completed'); $('#wiz-step-1').classList.add('active'); $('#wiz-check-1').classList.add('hidden'); }
-
-    if (step2Done) { $('#wiz-step-2').classList.add('completed'); $('#wiz-step-2').classList.remove('active'); $('#wiz-check-2').classList.remove('hidden'); $('#wiz-check-2').textContent = `${s.activeProvider} / ${s.activeModel}`; }
-    else if (step1Done) { $('#wiz-step-2').classList.remove('completed'); $('#wiz-step-2').classList.add('active'); $('#wiz-check-2').classList.add('hidden'); }
-
-    if (step1Done && step2Done) { $('#wiz-step-3').classList.add('active'); $('#wiz-check-3').classList.add('hidden'); }
-
-    // Auto-switch to Classify if fully setup and returning user
-    if (step1Done && step2Done && STATE.activeTab === 'setup') {
-        switchTab('classify');
-    }
-}
-
-$('#wiz-test-firefly').addEventListener('click', async () => {
-    const token = $('#wiz-firefly-token').value.trim();
-    if (!token) return;
-    const status = $('#wiz-firefly-status');
-    setLoading('#wiz-test-firefly', true);
-    try {
-        await api('PUT', '/api/settings', { fireflyPersonalToken: token });
-        await loadSettings();
-        const s = STATE.server;
-        if (s.fireflyStatus?.connected) {
-            status.textContent = `Connected to Firefly III v${s.fireflyStatus.version}`;
-            status.dataset.state = 'configured';
-            showToast('Firefly III connected!', 'success');
-        } else {
-            status.textContent = `Connection failed: ${s.fireflyStatus?.error || 'unknown'}`;
-            status.dataset.state = 'missing';
-        }
-    } catch (err) { status.textContent = err.message; status.dataset.state = 'missing'; }
-    finally { setLoading('#wiz-test-firefly', false); }
-});
-
-$('#wiz-test-ai').addEventListener('click', async () => {
-    const key = $('#wiz-ai-key').value.trim();
-    const provider = document.querySelector('input[name="wiz-provider"]:checked')?.value || 'openai';
-    const model = $('#wiz-model').value;
-    if (!key) return;
-    const status = $('#wiz-ai-status');
-    setLoading('#wiz-test-ai', true);
-    try {
-        await api('PUT', '/api/settings', { activeProvider: provider, activeModel: model, providerName: provider, providerApiKey: key });
-        const r = await api('POST', '/api/settings/test', { provider });
-        await loadSettings();
-        if (r.success) {
-            status.textContent = `${provider} connected!`;
-            status.dataset.state = 'configured';
-            showToast('AI provider connected!', 'success');
-        } else {
-            status.textContent = `Test failed: ${r.error}`;
-            status.dataset.state = 'missing';
-        }
-    } catch (err) { status.textContent = err.message; status.dataset.state = 'missing'; }
-    finally { setLoading('#wiz-test-ai', false); }
-});
-
-$('#wiz-start').addEventListener('click', () => switchTab('classify'));
-
-// ─── Rules ────────────────────────────────
-function renderRules(rules) {
-    const list = $('#rules-list'); list.innerHTML = '';
-    if (!rules.length) { list.innerHTML = '<div class="empty-state">No keyword rules defined. Rules bypass AI for known merchants, saving API costs.</div>'; return; }
-    rules.forEach(rule => {
-        const row = document.createElement('div'); row.className = 'rule-row';
-        row.innerHTML = `<input type="text" value="${(rule.keywords||[]).join(', ')}" class="rule-keywords" placeholder="uber, lyft, bolt"><span style="flex-shrink:0;color:var(--color-text-muted)">&rarr;</span><input type="text" value="${rule.category||''}" class="rule-category" placeholder="Category name"><button class="btn-danger btn-sm rule-remove">&times;</button>`;
-        list.appendChild(row);
-        row.querySelector('.rule-remove').addEventListener('click', () => row.remove());
-    });
-}
-$('#add-rule-btn').addEventListener('click', () => {
-    const emptyState = $('#rules-list .empty-state'); if (emptyState) emptyState.remove();
-    const row = document.createElement('div'); row.className = 'rule-row';
-    row.innerHTML = `<input type="text" class="rule-keywords" placeholder="uber, lyft, bolt"><span style="flex-shrink:0;color:var(--color-text-muted)">&rarr;</span><input type="text" class="rule-category" placeholder="Category name"><button class="btn-danger btn-sm rule-remove">&times;</button>`;
-    $('#rules-list').appendChild(row);
-    row.querySelector('.rule-remove').addEventListener('click', () => row.remove());
-    row.querySelector('.rule-keywords').focus();
-});
-$('#save-rules-btn').addEventListener('click', async () => {
-    setLoading('#save-rules-btn', true);
-    try {
-        const rules = [];
-        $$('.rule-row').forEach(row => { const kw = row.querySelector('.rule-keywords').value.trim(); const cat = row.querySelector('.rule-category').value.trim(); if (kw && cat) rules.push({ keywords: kw.split(',').map(s => s.trim()).filter(Boolean), category: cat }); });
-        await api('PUT', '/api/rules', rules);
-        showToast('Rules saved', 'success');
-    } catch (err) { showToast(err.message, 'error'); }
-    finally { setLoading('#save-rules-btn', false); }
-});
-
-// ─── Batch (SSE streaming) ────────────────
-function formatElapsed(ms) { const s = Math.round(ms / 1000); const m = Math.floor(s / 60); return m ? `${m}m ${s % 60}s` : `${s}s`; }
-
-function renderProgress(containerId, { processed, total, skipped, current, errors, lastError, applied, failed, elapsed, state }) {
-    const pct = total > 0 ? ((processed ?? applied ?? 0) / total * 100).toFixed(1) : 0;
-    const count = processed ?? applied ?? 0;
-    const el = $(`#${containerId}`);
-    el.classList.remove('hidden');
-    let barState = state || (errors || failed ? 'mixed' : '');
-    let html = `<div class="progress-container">
-        <div class="progress-header">
-            <span><strong>${count} of ${total}</strong>${skipped ? ` (${skipped} skipped)` : ''}${failed ? ` | ${failed} failed` : ''}</span>
-            <span class="progress-elapsed">${elapsed ? formatElapsed(elapsed) : ''}</span>
-        </div>
-        <div class="progress-bar"><div class="progress-bar-fill" data-state="${barState}" style="width:${pct}%"></div></div>`;
-    if (current) html += `<div class="progress-detail">Processing: ${esc(current)}</div>`;
-    if (errors && lastError) html += `<div class="progress-detail" style="color:var(--color-danger)">Last error: ${esc(lastError)}</div>`;
-    html += `</div>`;
-    el.innerHTML = html;
-}
-
-function renderProgressComplete(containerId, result, elapsed) {
-    const el = $(`#${containerId}`);
-    const total = result.total ?? result.totalProposals ?? 0;
-    const ok = result.applied ?? result.totalProposals ?? 0;
-    const fail = result.failed ?? result.errors ?? 0;
-    const cls = fail > 0 ? (ok > 0 ? 'mixed' : 'fail') : 'success';
-    el.innerHTML = `<div class="progress-container">
-        <div class="progress-bar"><div class="progress-bar-fill" data-state="${fail ? 'mixed' : 'complete'}" style="width:100%"></div></div>
-        <div class="progress-summary ${cls}">
-            <span>Total: ${total}</span>
-            ${result.applied !== undefined ? `<span>Applied: ${result.applied}</span>` : `<span>Proposals: ${result.totalProposals}</span>`}
-            ${fail > 0 ? `<span>Failed: ${fail}</span>` : ''}
-            ${result.skipped ? `<span>Skipped: ${result.skipped}</span>` : ''}
-            <span>${formatElapsed(elapsed)}</span>
-        </div>
-    </div>`;
-}
-
-function renderVocabularyDiff(containerId, vocabulary) {
-    if (!vocabulary) return;
-    const { initial, current } = vocabulary;
-    const added = current.filter(c => !initial.includes(c));
-    const el = document.getElementById(containerId);
-    if (!el) return;
-    el.innerHTML = `<details ${added.length > 0 ? 'open' : ''} style="margin-top:var(--sp-2)">
-        <summary style="font-size:0.75rem;cursor:pointer;color:var(--color-text-secondary)">
-            Category Vocabulary (${initial.length} initial${added.length ? ` + ${added.length} new` : ''})
-        </summary>
-        <div class="vocab-diff">
-            <div class="vocab-col-header">Initial (Firefly)</div>
-            <div class="vocab-col-header">Modified (AI)</div>
-            ${initial.map(c => `<div class="vocab-item unchanged">${esc(c)}</div><div class="vocab-item unchanged">${esc(c)}</div>`).join('')}
-            ${added.map(c => `<div class="vocab-item placeholder">&nbsp;</div><div class="vocab-item added">+ ${esc(c)}</div>`).join('')}
-        </div>
-    </details>`;
-}
-
-function streamSSE(url, method, body, onProgress) {
-    return new Promise((resolve, reject) => {
-        const ctrl = new AbortController();
-        const opts = { method, headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal };
-        const tok = getAuthToken();
-        if (tok) opts.headers['Authorization'] = `Bearer ${tok}`;
-        if (body !== undefined) opts.body = JSON.stringify(body);
-
-        let settled = false;
-        const done_ = (fn, val) => { if (!settled) { settled = true; fn(val); } };
-
-        fetch(url, opts).then(response => {
-            if (!response.ok) return done_(reject, new Error(`HTTP ${response.status}`));
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-            let currentEvt = '';
-
-            function processBuffer() {
-                const lines = buffer.split('\n');
-                buffer = lines.pop();
-                for (const line of lines) {
-                    if (line.startsWith('event: ')) {
-                        currentEvt = line.slice(7);
-                    } else if (line.startsWith('data: ')) {
-                        try {
-                            const data = JSON.parse(line.slice(6));
-                            if (currentEvt === 'progress' && onProgress) onProgress(data);
-                            else if (currentEvt === 'complete') { done_(resolve, data); return true; }
-                            else if (currentEvt === 'error') { done_(reject, new Error(data.message)); return true; }
-                        } catch {}
-                        currentEvt = '';
-                    } else if (line === '') {
-                        currentEvt = '';
-                    }
-                }
-                return false;
-            }
-
-            function read() {
-                reader.read().then(({ done, value }) => {
-                    if (value) buffer += decoder.decode(value, { stream: !done });
-                    if (processBuffer()) return;
-                    if (done) {
-                        if (buffer.trim()) {
-                            buffer += '\n';
-                            if (processBuffer()) return;
-                        }
-                        return done_(reject, new Error('Stream ended without completion'));
-                    }
-                    read();
-                }).catch(err => {
-                    done_(reject, err.name === 'AbortError' ? new Error('Cancelled') : err);
-                });
-            }
-            read();
-        }).catch(err => {
-            done_(reject, err.name === 'AbortError' ? new Error('Cancelled') : err);
-        });
-
-        streamSSE._currentAbort = ctrl;
-    });
-}
-
-let analyzeAbort = null;
-
-$('#cancel-analyze-btn').addEventListener('click', () => {
-    if (streamSSE._currentAbort) { streamSSE._currentAbort.abort(); streamSSE._currentAbort = null; }
-});
-
-$('#analyze-btn').addEventListener('click', async () => {
-    setLoading('#analyze-btn', true);
-    $('#cancel-analyze-btn').classList.remove('hidden');
-    $('#analysis-results').classList.add('hidden');
-    $('#analyze-progress').classList.remove('hidden');
-    $('#analyze-progress').innerHTML = '<div class="progress-detail">Starting analysis...</div>';
-    const startTime = Date.now();
-    const errors = [];
-
-    try {
-        const result = await streamSSE('/api/batch/analyze', 'POST', undefined, (p) => {
-            if (p.lastError) errors.push(p.lastError);
-            if (p.phase === 'fetching') {
-                renderProgress('analyze-progress', {
-                    processed: p.page || 0, total: p.totalPages || 1,
-                    current: p.fetchedSoFar ? `Fetching page ${p.page} of ${p.totalPages} (${p.fetchedSoFar} transactions)` : (p.message || 'Fetching...'),
-                    elapsed: Date.now() - startTime
-                });
-            } else {
-                renderProgress('analyze-progress', { ...p, elapsed: Date.now() - startTime });
-                if (p.vocabulary) renderVocabularyDiff('vocab-diff', p.vocabulary);
-            }
-        });
-
-        STATE.analysisResult = result;
-        renderProgressComplete('analyze-progress', result, Date.now() - startTime);
-
-        if (errors.length > 0) {
-            const el = $('#analyze-progress');
-            el.innerHTML += `<details class="progress-errors-log"><summary>${errors.length} error(s) during analysis</summary><div class="log-body">${errors.map(e => `<div>${esc(e)}</div>`).join('')}</div></details>`;
-        }
-
-        // Show auto-merge info
-        if (result.autoMerged > 0) showToast(`Auto-merged ${result.autoMerged} duplicate category name(s)`, 'info');
-
-        // Show merge UI if duplicates need user review
-        if (result.duplicates && result.duplicates.length > 0) {
-            renderMergeUI(result.duplicates);
-            $('#merge-section').classList.remove('hidden');
-        } else {
-            $('#merge-section').classList.add('hidden');
-        }
-
-        renderAnalysis(result);
-        $('#analysis-results').classList.remove('hidden');
-        showToast(`Analysis complete: ${result.totalProposals} proposals`, 'success');
-    } catch (err) {
-        $('#analyze-progress').innerHTML = `<div style="color:var(--color-danger);font-size:0.8rem;margin-top:var(--sp-2)">${esc(err.message)}</div>`;
-    } finally {
-        setLoading('#analyze-btn', false);
-        $('#cancel-analyze-btn').classList.add('hidden');
-    }
-});
-
-function renderMergeUI(duplicates) {
-    const list = $('#merge-list'); list.innerHTML = '';
-    duplicates.forEach((dup, i) => {
-        const opts = dup.variants.map(v => `<option value="${escAttr(v)}" ${v === dup.recommended ? 'selected' : ''}>${esc(v)}</option>`).join('');
-        list.innerHTML += `<div style="display:flex;gap:var(--sp-2);align-items:center;margin-bottom:var(--sp-1);font-size:0.8rem">
-            <span>${dup.variants.map(esc).join(', ')}</span>
-            <span>&rarr;</span>
-            <select class="merge-select" data-idx="${i}" style="padding:var(--sp-1);font-size:0.8rem">${opts}</select>
-        </div>`;
-    });
-}
-
-$('#apply-merge-btn').addEventListener('click', () => {
-    if (!STATE.analysisResult) return;
-    const mergeMap = {};
-    $$('.merge-select').forEach(sel => {
-        const idx = parseInt(sel.dataset.idx);
-        const dup = STATE.analysisResult.duplicates[idx];
-        const keep = sel.value;
-        for (const v of dup.variants) {
-            if (v !== keep) mergeMap[v.toLowerCase()] = keep;
-        }
-    });
-
-    // Remap proposals
-    STATE.analysisResult.proposals = STATE.analysisResult.proposals.map(p => {
-        const key = p.proposedCategory?.toLowerCase();
-        if (key && mergeMap[key]) return { ...p, proposedCategory: mergeMap[key] };
-        return p;
-    });
-    STATE.analysisResult.duplicates = [];
-
-    $('#merge-section').classList.add('hidden');
-    renderAnalysis(STATE.analysisResult);
-    showToast('Categories merged', 'success');
-});
-
-function renderAnalysis(result) {
-    const tbody = $('#summary-table tbody'); tbody.innerHTML = '';
-    for (const s of result.summary) {
-        tbody.innerHTML += `<tr><td>${esc(s.category)}</td><td>${s.transactionCount}</td><td>${s.merchants.map(esc).join(', ')}</td></tr>`;
-    }
-    const nc = $('#new-cat-section');
-    if (result.newCategoryProposals.length > 0) {
-        nc.classList.remove('hidden');
-        const list = $('#new-cat-list'); list.innerHTML = '';
-        for (const p of result.newCategoryProposals) {
-            list.innerHTML += `<label style="display:block;font-size:0.8rem;margin-bottom:var(--sp-1)"><input type="checkbox" class="new-cat-check" value="${escAttr(p.suggestedCategoryName)}" checked> Create "<strong>${esc(p.suggestedCategoryName)}</strong>" (${p.transactionCount} txns)</label>`;
-        }
-    } else { nc.classList.add('hidden'); }
-}
-
-$('#apply-btn').addEventListener('click', async () => {
-    if (!STATE.analysisResult) return;
-    setLoading('#apply-btn', true);
-    $('#apply-progress').classList.remove('hidden');
-    $('#apply-progress').innerHTML = '<div class="progress-detail">Starting apply...</div>';
-    const startTime = Date.now();
-    const errors = [];
-
-    try {
-        const newCategories = []; $$('.new-cat-check:checked').forEach(cb => newCategories.push(cb.value));
-        const r = await streamSSE('/api/batch/apply', 'POST', { proposals: STATE.analysisResult.proposals, newCategories }, (p) => {
-            if (p.lastError) errors.push(`${p.current}: ${p.lastError}`);
-            renderProgress('apply-progress', { applied: p.applied, total: p.total, failed: p.failed, current: p.current, elapsed: Date.now() - startTime });
-        });
-
-        renderProgressComplete('apply-progress', r, Date.now() - startTime);
-        if (errors.length > 0) {
-            const el = $('#apply-progress');
-            el.innerHTML += `<details class="progress-errors-log"><summary>${errors.length} error(s) during apply</summary><div class="log-body">${errors.map(e => `<div>${esc(e)}</div>`).join('')}</div></details>`;
-        }
-
-        STATE.analysisResult = null;
-        showToast(`Applied ${r.applied} categorizations`, r.failed ? 'info' : 'success');
-        await loadSettings(); await loadMemory();
-    } catch (err) {
-        $('#apply-progress').innerHTML = `<div style="color:var(--color-danger);font-size:0.8rem">${esc(err.message)}</div>`;
-    } finally {
-        setLoading('#apply-btn', false);
-    }
-});
-
-// ─── Jobs ─────────────────────────────────
-function sourceBadge(src) {
-    if (!src) return '';
-    if (src.startsWith('rule:')) return `<span class="badge badge-rule">rule</span>`;
-    if (src.startsWith('memory:')) return `<span class="badge badge-memory">memory</span>`;
-    if (src.startsWith('batch:')) return `<span class="badge badge-batch">batch</span>`;
-    if (src.startsWith('ai:')) return `<span class="badge badge-ai">${src.replace('ai:','')}</span>`;
-    if (src.startsWith('error:')) return `<span class="badge badge-error">error</span>`;
-    return `<span class="badge">${src}</span>`;
-}
-
-function renderJobs(jobs) {
-    const mount = $('#jobs-mount');
-    const filter = $('#job-filter').value;
-    const filtered = filter === 'review' ? jobs.filter(j => j.needs_review === 1) : jobs;
-    if (!filtered.length) { mount.innerHTML = '<div class="empty-state">No jobs yet. Use the wizard or Analyze button to start categorizing.</div>'; return; }
-    const catOpts = STATE.categories.map(c => `<option value="${escAttr(c.name)}">${esc(c.name)}</option>`).join('');
-    mount.innerHTML = filtered.map(job => {
-        const isReview = job.needs_review === 1;
-        const conf = job.confidence != null ? `${Math.round(job.confidence * 100)}%` : '';
-        return `<div class="job ${isReview ? 'needs-review' : ''}" data-job-id="${job.id}">
-            <div class="job-header"><strong>${esc(job.destination_name || '')} &rarr; ${job.corrected_category || job.category || '???'}</strong><div>${sourceBadge(job.source)} ${conf}</div></div>
-            <div class="job-meta">${new Date(job.created).toLocaleString()} | ${esc(job.description || '')}</div>
-            ${job.prompt ? `<details><summary>Prompt & Response</summary><pre>${esc(job.prompt)}</pre><pre>${esc(job.response || '')}</pre></details>` : ''}
-            <div class="job-actions"><select class="correct-select" data-job-id="${job.id}"><option value="">-- correct --</option>${catOpts}</select><button class="btn-secondary btn-sm correct-btn" data-job-id="${job.id}">Correct</button></div>
-        </div>`;
-    }).join('');
-    mount.querySelectorAll('.correct-btn').forEach(btn => btn.addEventListener('click', async () => {
-        const sel = mount.querySelector(`.correct-select[data-job-id="${btn.dataset.jobId}"]`);
-        const cat = sel?.value; if (!cat) return;
-        const catObj = STATE.categories.find(c => c.name === cat);
-        try { await api('POST', `/api/jobs/${btn.dataset.jobId}/correct`, { category: cat, categoryId: catObj?.id || '' }); showToast('Correction saved', 'success'); } catch (err) { showToast(err.message, 'error'); }
-    }));
-}
-$('#job-filter').addEventListener('change', () => renderJobs(STATE.allJobs));
-socket.on('jobs', jobs => { STATE.allJobs = jobs; renderJobs(jobs); });
-socket.on('job created', e => {
-    if (e.job) { STATE.allJobs = [e.job, ...STATE.allJobs.filter(j => j.id !== e.job.id)]; }
-    renderJobs(STATE.allJobs);
-});
-socket.on('job updated', e => {
-    if (e.job) { STATE.allJobs = STATE.allJobs.map(j => j.id === e.job.id ? e.job : j); }
-    renderJobs(STATE.allJobs);
-});
-
-// ─── Memory ───────────────────────────────
-async function loadMemory() {
-    try { const entries = await api('GET', '/api/memory?limit=100'); renderMemory(entries); } catch {}
-}
-function renderMemoryStats(stats) { $('#memory-stats').innerHTML = `<div><span>${stats.total || 0}</span> learned</div><div><span>${stats.user_corrected || 0}</span> corrected</div>`; }
-function renderMemory(entries) {
-    if (STATE.server?.memoryStats) renderMemoryStats(STATE.server.memoryStats);
-    const list = $('#memory-list');
-    if (!entries.length) { list.innerHTML = '<div class="empty-state">No merchants learned yet. The system learns from each classification.</div>'; return; }
-    list.innerHTML = entries.map(e => `<div class="memory-entry"><div><strong>${esc(e.raw_name)}</strong> &rarr; ${esc(e.category)} <span style="color:var(--color-text-muted)">(${e.corrected ? 'corrected' : e.source}, ${e.count}&times;)</span></div></div>`).join('');
-}
-$('#clear-memory-btn').addEventListener('click', async () => { if (!confirm('Clear all merchant memory?')) return; await api('DELETE', '/api/memory'); await loadMemory(); await loadSettings(); showToast('Memory cleared', 'info'); });
-
-// ─── Init ─────────────────────────────────
-(async () => {
-    try {
-        const status = await fetch('/api/setup-status').then(r => r.json());
-        if (status.apiTokenRequired) {
-            if (getAuthToken()) {
-                try { await loadSettings(); loadMemory(); return; }
-                catch { showAuthOverlay(); return; }
-            }
-            showAuthOverlay(); return;
-        }
-        await loadSettings();
-        loadMemory();
-    } catch {
-        try { await loadSettings(); loadMemory(); } catch { showAuthOverlay(); }
-    }
-})();
+function formatElapsed(ms) { const s = Math.round((ms || 0) / 1000); const m = Math.floor(s / 60); return m ? `${m}m ${s % 60}s` : `${s}s`; }
+function badgeClass(src) { if (!src) return ''; const map = { rule: 'badge-rule', memory: 'badge-memory', batch: 'badge-batch', ai: 'badge-ai', error: 'badge-error' }; for (const [k, v] of Object.entries(map)) if (src.startsWith(k + ':') || src.startsWith(k)) return v; return ''; }
+function badgeLabel(src) { if (!src) return ''; if (src.startsWith('ai:')) return src.replace('ai:', ''); for (const k of ['rule', 'memory', 'batch', 'error']) if (src.startsWith(k)) return k; return src; }
 </script>
 </body>
 </html>
