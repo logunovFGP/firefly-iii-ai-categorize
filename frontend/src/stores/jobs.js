@@ -1,5 +1,4 @@
 import { api } from "../lib/api.js";
-import Alpine from "alpinejs";
 
 export function initJobsStore(Alpine) {
     Alpine.store("jobs", {

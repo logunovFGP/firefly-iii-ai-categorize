@@ -1,5 +1,4 @@
 import { streamSSE } from "../lib/sse.js";
-import Alpine from "alpinejs";
 
 export function initBatchStore(Alpine) {
     Alpine.store("batch", {

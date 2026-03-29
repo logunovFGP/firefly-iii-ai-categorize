@@ -290,8 +290,8 @@
 
     <!-- ═══ SETTINGS TAB ═══ -->
     <div x-show="$store.app.activeTab === 'settings'" role="tabpanel">
-        <div class="card" x-data="{ fireflyToken: '', provider: '', model: '', providerKey: '', customModel: false, customModelId: '' }"
-             x-init="$watch('$store.app.server', s => { if (s) { provider = s.activeProvider; model = s.activeModel; } }); if ($store.app.server) { provider = $store.app.server.activeProvider; model = $store.app.server.activeModel; }">
+        <div class="card" x-data="{ fireflyToken: '', provider: '', model: '', providerKey: '', customModel: false, customModelId: '', threshold: 0.5, webhook: true }"
+             x-init="$watch('$store.app.server', s => { if (s) { provider = s.activeProvider; model = s.activeModel; threshold = s.confidenceThreshold; webhook = s.enableWebhook; } }); if ($store.app.server) { provider = $store.app.server.activeProvider; model = $store.app.server.activeModel; threshold = $store.app.server.confidenceThreshold || 0.5; webhook = $store.app.server.enableWebhook ?? true; }">
             <div class="card-title">Configuration</div>
 
             <!-- Firefly -->
@@ -347,8 +347,7 @@
             <hr class="form-divider">
 
             <!-- Behavior -->
-            <div class="form-row" x-data="{ threshold: $store.app.server?.confidenceThreshold || 0.5, webhook: $store.app.server?.enableWebhook ?? true }"
-                 x-init="$watch('$store.app.server', s => { if (s) { threshold = s.confidenceThreshold; webhook = s.enableWebhook; } })">
+            <div class="form-row">
                 <div class="form-group">
                     <label>Confidence Threshold</label>
                     <select x-model="threshold">
@@ -368,7 +367,7 @@
 
             <div class="btn-group">
                 <button class="btn-primary" :disabled="$store.app.loading.settingsSave"
-                        @click="$store.app.saveSettings({ activeProvider: provider, activeModel: customModel ? customModelId : model, fireflyPersonalToken: fireflyToken || undefined, providerName: provider, providerApiKey: providerKey || undefined, confidenceThreshold: parseFloat($el.closest('[x-data]').querySelector('[x-model=threshold]')?.value || 0.5), enableWebhook: $el.closest('[x-data]').querySelector('[x-model=webhook]')?.checked ?? true }); fireflyToken = ''; providerKey = ''">
+                        @click="$store.app.saveSettings({ activeProvider: provider, activeModel: customModel ? customModelId : model, fireflyPersonalToken: fireflyToken || undefined, providerName: provider, providerApiKey: providerKey || undefined, confidenceThreshold: parseFloat(threshold), enableWebhook: webhook }); fireflyToken = ''; providerKey = ''">
                     <span x-text="$store.app.loading.settingsSave ? 'Saving...' : 'Save All Settings'"></span>
                 </button>
             </div>
@@ -392,7 +391,7 @@
 <!-- Toasts -->
 <div class="toast-container" role="status" aria-live="polite">
     <template x-for="t in $store.toast.items" :key="t.id">
-        <div class="toast" :class="`toast-${t.type}`" :class="{ show: t.visible }" role="alert" x-text="t.message"></div>
+        <div class="toast" :class="[`toast-${t.type}`, t.visible ? 'show' : '']" role="alert" x-text="t.message"></div>
     </template>
 </div>
 
