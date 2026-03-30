@@ -12,6 +12,7 @@ export const PROVIDER_MODELS = {
             { id: "gpt-3.5-turbo", label: "GPT-3.5 Turbo" },
         ],
         defaultModel: "gpt-4o-mini",
+        researchModel: "gpt-4o-mini",
     },
     gemini: {
         label: "Google Gemini",
@@ -22,6 +23,7 @@ export const PROVIDER_MODELS = {
             { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
         ],
         defaultModel: "gemini-2.0-flash",
+        researchModel: "gemini-2.0-flash",
     },
 };
 

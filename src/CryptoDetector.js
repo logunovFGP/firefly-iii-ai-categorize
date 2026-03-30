@@ -5,12 +5,10 @@ const TRC20_DESC = /^TRC20\s+(outgoing|incoming)\s+transfer\s+/i;
 const TOKEN_SYMBOL = /^(USDT|TRX|USDC|USDD|ETH|BTC|BNB|SOL|MATIC|DAI)\b/i;
 
 export default class CryptoDetector {
-    #defaultCategory;
-    #perTokenCategories;
+    #configStore;
 
     constructor(configStore) {
-        this.#defaultCategory = configStore.getCryptoCategory?.() || "Crypto";
-        this.#perTokenCategories = configStore.getCryptoTokenCategories?.() || {};
+        this.#configStore = configStore;
     }
 
     detect(destinationName, description) {
@@ -18,11 +16,14 @@ export default class CryptoDetector {
         const isCryptoDesc = CRYPTO_DESC.test(description) || TRC20_DESC.test(description);
         if (!isAddress && !isCryptoDesc) return null;
 
+        const defaultCategory = this.#configStore.getCryptoCategory?.() || "Crypto";
+        const perTokenCategories = this.#configStore.getCryptoTokenCategories?.() || {};
+
         const tokenMatch = description.match(TOKEN_SYMBOL);
         const symbol = tokenMatch ? tokenMatch[1].toUpperCase() : null;
-        const category = symbol && this.#perTokenCategories[symbol]
-            ? this.#perTokenCategories[symbol]
-            : this.#defaultCategory;
+        const category = symbol && perTokenCategories[symbol]
+            ? perTokenCategories[symbol]
+            : defaultCategory;
 
         return { category, tokenSymbol: symbol, confidence: 1.0, source: `crypto:${symbol || "unknown"}`, needsReview: false };
     }

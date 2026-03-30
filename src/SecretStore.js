@@ -57,12 +57,14 @@ export default class SecretStore {
     }
 
     async rotateKey() {
-        // Generate new key
         const newKey = crypto.randomBytes(32);
+        const keyPath = path.join(path.dirname(this.#filePath), ".master_key");
+        const backupKeyPath = keyPath + ".bak";
+        const backupDataPath = this.#filePath + ".bak";
 
         // Decrypt all secrets with old key, re-encrypt with new key
         const reEncrypted = {};
-        for (const [name, entry] of Object.entries(this.#secrets)) {
+        for (const [name] of Object.entries(this.#secrets)) {
             const plainValue = this.getSecret(name);
             if (!plainValue) continue;
 
@@ -74,14 +76,27 @@ export default class SecretStore {
             reEncrypted[name] = { iv: iv.toString("hex"), tag, ciphertext: encrypted };
         }
 
-        // Swap
-        this.#secrets = reEncrypted;
-        this.#masterKey = newKey;
-        await this.#save();
+        // Backup current files before writing
+        try { await fs.copyFile(keyPath, backupKeyPath); } catch { /* no existing key file */ }
+        try { await fs.copyFile(this.#filePath, backupDataPath); } catch { /* no existing data file */ }
 
-        // Update key file
-        const keyPath = path.join(path.dirname(this.#filePath), ".master_key");
-        await fs.writeFile(keyPath, newKey.toString("hex"), "utf8");
+        // Write new key first, then new encrypted data
+        try {
+            await fs.writeFile(keyPath, newKey.toString("hex"), "utf8");
+            this.#secrets = reEncrypted;
+            this.#masterKey = newKey;
+            await this.#save();
+        } catch (err) {
+            // Restore backups on failure
+            try { await fs.copyFile(backupKeyPath, keyPath); } catch { /* best effort */ }
+            try { await fs.copyFile(backupDataPath, this.#filePath); } catch { /* best effort */ }
+            await this.#load(); // reload old data
+            throw new Error(`Key rotation failed, restored backups: ${err.message}`);
+        }
+
+        // Clean up backups
+        try { await fs.unlink(backupKeyPath); } catch { /* ok */ }
+        try { await fs.unlink(backupDataPath); } catch { /* ok */ }
 
         console.info("Master key rotated successfully");
         return newKey.toString("hex");

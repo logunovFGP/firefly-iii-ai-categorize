@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Firefly III AI Categorizer</title>
-  <script type="module" crossorigin src="/assets/index-BiMjd_is.js"></script>
+  <script type="module" crossorigin src="/assets/index-1E7UWzx1.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-Dvz5Kv5B.css">
 </head>
 <body>
@@ -111,33 +111,29 @@
             <div class="card-title">Batch Categorization</div>
             <div class="card-subtitle">Analyze uncategorized transactions, review proposals, then apply.</div>
             <div class="btn-group" style="margin-top:0">
-                <button class="btn-primary" :disabled="$store.batch.analyzing" @click="$store.batch.startAnalysis()">
-                    <span x-text="$store.batch.analyzing ? 'Analyzing...' : 'Analyze Uncategorized'"></span>
+                <button class="btn-primary" :disabled="$store.batch.isBusy" @click="$store.batch.startAnalysis()">
+                    <span x-text="$store.batch.step === 'analyzing' ? 'Analyzing...' : 'Analyze Uncategorized'"></span>
                 </button>
-                <button class="btn-secondary btn-sm" x-show="$store.batch.analyzing" @click="$store.batch.cancelAnalysis()">Cancel</button>
+                <button class="btn-secondary btn-sm" x-show="$store.batch.step === 'analyzing'" @click="$store.batch.cancelAnalysis()">Cancel</button>
             </div>
 
-            <!-- Progress -->
-            <div x-show="$store.batch.analyzing || $store.batch.analyzeProgress.processed > 0" class="progress-container">
-                <div class="progress-header">
-                    <span><strong x-text="`${$store.batch.analyzeProgress.processed} of ${$store.batch.analyzeProgress.total}`"></strong></span>
-                    <span class="progress-elapsed" x-text="formatElapsed($store.batch.analyzeProgress.elapsed)"></span>
+            <!-- STEP: ANALYZING -->
+            <div x-show="$store.batch.step === 'analyzing'" style="margin-top:var(--sp-2)">
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span><strong x-text="`${$store.batch.analyzeProgress.processed} of ${$store.batch.analyzeProgress.total}`"></strong></span>
+                        <span class="progress-elapsed" x-text="formatElapsed($store.batch.analyzeProgress.elapsed)"></span>
+                    </div>
+                    <div class="progress-bar" role="progressbar" :aria-valuenow="$store.batch.analyzeProgress.pct" aria-valuemin="0" aria-valuemax="100">
+                        <div class="progress-bar-fill" :style="`width:${$store.batch.analyzeProgress.pct}%`"></div>
+                    </div>
+                    <div class="progress-detail" x-text="$store.batch.analyzeProgress.current"></div>
                 </div>
-                <div class="progress-bar" role="progressbar" :aria-valuenow="$store.batch.analyzeProgress.pct" aria-valuemin="0" aria-valuemax="100">
-                    <div class="progress-bar-fill" :style="`width:${$store.batch.analyzeProgress.pct}%`"></div>
-                </div>
-                <div class="progress-detail" x-text="$store.batch.analyzeProgress.current"></div>
-            </div>
-
-            <!-- Vocabulary diff — always visible during analysis -->
-            <div x-show="$store.batch.analyzing || $store.batch.vocabulary.current.length > 0 || $store.batch.hasResults" style="margin-top:var(--sp-2)">
-                <details open>
+                <!-- Vocabulary diff -->
+                <details open style="margin-top:var(--sp-2)">
                     <summary class="text-xs text-muted" x-text="$store.batch.vocabulary.current.length === 0
                         ? 'Category Vocabulary (loading...)'
                         : `Category Vocabulary (${$store.batch.vocabulary.initial.length} existing${$store.batch.vocabulary.added?.length ? ` + ${$store.batch.vocabulary.added.length} discovered by AI` : ''} — ${$store.batch.vocabulary.current.length} total)`"></summary>
-                    <template x-if="$store.batch.vocabulary.current.length === 0 && $store.batch.vocabulary.initial.length === 0">
-                        <div class="text-xs text-muted" style="padding:var(--sp-2)">No categories in Firefly yet. The AI will suggest new categories during analysis.</div>
-                    </template>
                     <div x-show="$store.batch.vocabulary.current.length > 0" class="vocab-diff">
                         <div class="vocab-col-header">Existing (Firefly)</div>
                         <div class="vocab-col-header">Discovered (AI)</div>
@@ -151,7 +147,7 @@
                 </details>
             </div>
 
-            <!-- Errors log -->
+            <!-- Errors log (visible across steps) -->
             <template x-if="$store.batch.analyzeErrors.length > 0">
                 <details class="progress-errors-log">
                     <summary x-text="`${$store.batch.analyzeErrors.length} error(s) during analysis`"></summary>
@@ -159,24 +155,93 @@
                 </details>
             </template>
 
-            <!-- Results -->
-            <div x-show="$store.batch.hasResults" style="margin-top:var(--sp-4)">
-                <!-- Merge UI -->
-                <div x-show="$store.batch.hasDuplicates" class="merge-section">
-                    <strong class="text-sm" style="color:var(--color-warning)">Duplicate categories detected:</strong>
+            <!-- STEP: MERGE -->
+            <div x-show="$store.batch.step === 'merge' || $store.batch.step === 'merging'" style="margin-top:var(--sp-4)">
+                <div class="merge-section">
+                    <strong class="text-sm" style="color:var(--color-warning)">Duplicate categories detected
+                        <span x-show="($store.batch.result?.duplicates || []).some(d => d.source === 'semantic-ai')" style="font-weight:normal;font-size:0.75rem"> (includes AI-detected semantic duplicates)</span>:</strong>
                     <template x-for="(dup, i) in ($store.batch.result?.duplicates || [])" :key="i">
-                        <div style="display:flex;gap:var(--sp-2);align-items:center;margin-top:var(--sp-1);font-size:0.8rem">
-                            <span x-text="dup.variants.join(', ')"></span><span>&rarr;</span>
-                            <select @change="$store.batch.mergeSelections[i] = $event.target.value" class="filter-select">
-                                <template x-for="v in dup.variants" :key="v"><option :value="v" :selected="v === dup.recommended" x-text="v"></option></template>
-                            </select>
+                        <div style="margin-top:var(--sp-2);padding:var(--sp-2);border:1px solid var(--color-border, #ddd);border-radius:var(--radius)">
+                            <!-- Variant tags with remove button -->
+                            <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">
+                                <template x-for="v in dup.variants" :key="v">
+                                    <span style="display:inline-flex;align-items:center;padding:2px 8px;background:#fef3c7;border-radius:var(--radius);font-size:0.8rem">
+                                        <span x-text="v"></span>
+                                        <button x-show="dup.variants.length > 2" @click="$store.batch.removeFromGroup(i, v)" style="margin-left:4px;cursor:pointer;border:none;background:none;font-size:0.7rem;line-height:1" title="Remove from group">&times;</button>
+                                    </span>
+                                </template>
+                                <!-- Add from available -->
+                                <select @change="$store.batch.addToGroup(i, $event.target.value); $event.target.selectedIndex = 0" style="font-size:0.75rem;padding:2px 4px">
+                                    <option value="">+ Add...</option>
+                                    <template x-for="c in $store.batch.availableForGroups" :key="c">
+                                        <option :value="c" x-text="c"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            <!-- Merge-to dropdown -->
+                            <div style="display:flex;align-items:center;gap:var(--sp-1);margin-top:var(--sp-1)">
+                                <span style="font-size:0.75rem;color:var(--color-muted)">Merge to:</span>
+                                <select x-model="$store.batch.mergeSelections[i]" class="filter-select" style="font-size:0.8rem">
+                                    <template x-for="v in dup.variants" :key="v">
+                                        <option :value="v" x-text="v"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            <div x-show="dup.reason" style="font-size:0.7rem;color:var(--color-muted);font-style:italic;margin-top:2px" x-text="dup.reason"></div>
                         </div>
                     </template>
-                    <button class="btn-primary btn-sm" style="margin-top:var(--sp-2)" @click="$store.batch.applyMerge()">Apply Merge</button>
+                    <div style="display:flex;gap:var(--sp-2);margin-top:var(--sp-2)">
+                        <button class="btn-primary btn-sm" :disabled="$store.batch.step === 'merging'" @click="$store.batch.confirmMerge()">
+                            <span x-text="$store.batch.step === 'merging' ? 'Merging...' : 'Confirm Merge'"></span>
+                        </button>
+                        <button class="btn-secondary btn-sm" :disabled="$store.batch.step === 'merging'" @click="$store.batch.skipMerge()">Skip (keep all separate)</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP: REVIEW -->
+            <div x-show="$store.batch.step === 'review' || $store.batch.step === 'retrying'" style="margin-top:var(--sp-4)">
+                <!-- Dedup Summary -->
+                <div>
+                    <strong class="text-sm">Category Deduplication</strong>
+                    <div style="font-size:0.8rem;color:var(--color-muted);margin-top:var(--sp-1)" x-text="`${$store.batch.result?.autoMerged || 0} auto-merged variant(s)`"></div>
+                </div>
+
+                <!-- Category Discovery -->
+                <div style="margin-top:var(--sp-4)">
+                    <strong class="text-sm">Category Discovery</strong>
+                    <div style="display:flex;gap:var(--sp-4);margin-top:var(--sp-2)">
+                        <div style="flex:1">
+                            <div class="text-sm" style="font-weight:600;margin-bottom:var(--sp-1)">Existing (Firefly): <span x-text="($store.batch.result?.existingCategories || []).length"></span></div>
+                            <div style="font-size:0.75rem;max-height:200px;overflow-y:auto;background:var(--surface-bg);padding:var(--sp-2);border-radius:var(--radius)">
+                                <template x-if="($store.batch.result?.existingCategories || []).length === 0"><div style="color:var(--color-muted);font-style:italic">None</div></template>
+                                <template x-for="c in ($store.batch.result?.existingCategories || [])" :key="c"><div x-text="c"></div></template>
+                            </div>
+                        </div>
+                        <div style="flex:1">
+                            <div class="text-sm" style="font-weight:600;margin-bottom:var(--sp-1)">Discovered (AI): <span x-text="($store.batch.result?.discoveredCategories || []).length"></span></div>
+                            <div style="font-size:0.75rem;max-height:200px;overflow-y:auto;background:var(--bg-success-light, #f0fdf4);padding:var(--sp-2);border-radius:var(--radius)">
+                                <template x-for="c in ($store.batch.result?.discoveredCategories || [])" :key="c"><div x-text="c"></div></template>
+                            </div>
+                        </div>
+                    </div>
+                    <template x-if="($store.batch.result?.uncategorized || 0) > 0">
+                        <div class="text-sm" style="margin-top:var(--sp-2);color:var(--color-warning)" x-text="`${$store.batch.result.uncategorized} transaction(s) could not be categorized by AI`"></div>
+                    </template>
+                    <!-- Retry Unmatched -->
+                    <div x-show="$store.batch.hasUnmatched && $store.batch.step === 'review'" style="margin-top:var(--sp-2)">
+                        <button class="btn-secondary btn-sm" @click="$store.batch.retryUnmatched()">Retry Unmatched with Research AI</button>
+                        <span class="text-xs text-muted" style="margin-left:var(--sp-2)">Uses a different prompt to identify unfamiliar merchants</span>
+                    </div>
+                    <div x-show="$store.batch.step === 'retrying'" class="progress-container" style="margin-top:var(--sp-2)">
+                        <div><strong x-text="`Research: ${$store.batch.retryProgress.processed} of ${$store.batch.retryProgress.total}`"></strong></div>
+                        <div class="progress-bar"><div class="progress-bar-fill" :style="`width:${$store.batch.retryProgress.pct}%`"></div></div>
+                        <div class="progress-detail" x-text="$store.batch.retryProgress.current"></div>
+                    </div>
                 </div>
 
                 <!-- Summary table -->
-                <table class="summary">
+                <table class="summary" style="margin-top:var(--sp-4)">
                     <thead><tr><th>Category</th><th>Transactions</th><th>Merchants</th></tr></thead>
                     <tbody>
                         <template x-for="s in ($store.batch.result?.summary || [])" :key="s.category">
@@ -198,16 +263,47 @@
 
                 <!-- Apply -->
                 <div class="btn-group">
-                    <button class="btn-success" :disabled="$store.batch.applying" @click="$store.batch.applyAll()">
-                        <span x-text="$store.batch.applying ? 'Applying...' : 'Apply All Proposals'"></span>
-                    </button>
+                    <button class="btn-success" :disabled="$store.batch.step !== 'review'" @click="$store.batch.applyAll()">Apply All Proposals</button>
                 </div>
+            </div>
 
-                <!-- Apply progress -->
-                <div x-show="$store.batch.applying || $store.batch.applyProgress.applied > 0" class="progress-container" style="margin-top:var(--sp-2)">
-                    <div class="progress-bar"><div class="progress-bar-fill" :style="`width:${$store.batch.applyProgress.pct}%`"></div></div>
-                    <div class="progress-detail" x-text="`Applied: ${$store.batch.applyProgress.applied}, Failed: ${$store.batch.applyProgress.failed}, Total: ${$store.batch.applyProgress.total}`"></div>
+            <!-- STEP: APPLYING -->
+            <div x-show="$store.batch.step === 'applying'" class="progress-container" style="margin-top:var(--sp-4)">
+                <div class="progress-bar"><div class="progress-bar-fill" :style="`width:${$store.batch.applyProgress.pct}%`"></div></div>
+                <div class="progress-detail" x-text="`Applied: ${$store.batch.applyProgress.applied}, Failed: ${$store.batch.applyProgress.failed}${$store.batch.applyProgress.skippedNull ? ', Skipped: ' + $store.batch.applyProgress.skippedNull : ''}, Total: ${$store.batch.applyProgress.total}`"></div>
+            </div>
+
+            <!-- STEP: DONE -->
+            <div x-show="$store.batch.step === 'done'" style="margin-top:var(--sp-4);padding:var(--sp-3);background:var(--surface-bg);border-radius:var(--radius)">
+                <strong class="text-sm">Apply Results</strong>
+                <div style="display:flex;gap:var(--sp-4);margin-top:var(--sp-2);font-size:0.85rem">
+                    <div><strong x-text="$store.batch.applyResult?.applied || 0"></strong> applied</div>
+                    <div><strong x-text="$store.batch.applyResult?.failed || 0"></strong> failed</div>
+                    <template x-if="($store.batch.applyResult?.skippedNull || 0) > 0">
+                        <div><strong x-text="$store.batch.applyResult?.skippedNull || 0"></strong> skipped</div>
+                    </template>
                 </div>
+                <template x-if="($store.batch.applyResult?.categoriesCreated || []).length > 0">
+                    <div style="margin-top:var(--sp-3)">
+                        <div class="text-sm" style="font-weight:600;color:var(--color-success)">New categories created (<span x-text="$store.batch.applyResult.categoriesCreated.length"></span>):</div>
+                        <div style="font-size:0.8rem;margin-top:var(--sp-1)">
+                            <template x-for="cat in $store.batch.applyResult.categoriesCreated" :key="cat">
+                                <span style="display:inline-block;padding:2px 8px;margin:2px;background:#f0fdf4;border-radius:var(--radius);border:1px solid #86efac" x-text="cat"></span>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+                <template x-if="($store.batch.applyResult?.categoriesExisted || []).length > 0">
+                    <div style="margin-top:var(--sp-2)">
+                        <div class="text-sm" style="font-weight:600;color:var(--color-muted)">Already existed (<span x-text="$store.batch.applyResult.categoriesExisted.length"></span>):</div>
+                        <div style="font-size:0.8rem;margin-top:var(--sp-1)">
+                            <template x-for="cat in $store.batch.applyResult.categoriesExisted" :key="cat">
+                                <span style="display:inline-block;padding:2px 8px;margin:2px;background:var(--surface-bg);border-radius:var(--radius);border:1px solid var(--color-border)" x-text="cat"></span>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+                <button class="btn-secondary btn-sm" style="margin-top:var(--sp-3)" @click="$store.batch.reset()">Dismiss</button>
             </div>
         </div>
 

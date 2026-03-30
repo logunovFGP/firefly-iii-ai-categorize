@@ -11,6 +11,8 @@ const app = new App();
 
 const shutdown = () => {
     console.log("Shutting down gracefully...");
+    try { app._database?.close(); } catch { /* best effort */ }
+    try { app._server?.close(); } catch { /* best effort */ }
     process.exit(0);
 };
 process.on("SIGTERM", shutdown);

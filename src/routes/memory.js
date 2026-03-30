@@ -4,8 +4,8 @@ export default function memoryRoutes({ merchantMemory }) {
     const router = Router();
 
     router.get("/memory", (req, res) => {
-        const limit = parseInt(req.query.limit) || 50;
-        const offset = parseInt(req.query.offset) || 0;
+        const limit = Math.min(parseInt(req.query.limit) || 50, 500);
+        const offset = Math.max(parseInt(req.query.offset) || 0, 0);
         res.json(merchantMemory.list(limit, offset));
     });
 

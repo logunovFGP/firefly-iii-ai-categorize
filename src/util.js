@@ -62,6 +62,14 @@ export function matchCategory(guess, categoryList) {
     return categoryList.find(c => c.toLowerCase() === lower) || null;
 }
 
+export function handleRouteError(res, error) {
+    if (error?.statusCode) {
+        return res.status(error.statusCode).json({ error: error.message });
+    }
+    console.error(error);
+    res.status(500).json({ error: error.message });
+}
+
 export function getConfigVariable(name, defaultValue = null) {
     if (!process.env.hasOwnProperty(name) || process.env[name] == null) {
         if (defaultValue == null) {

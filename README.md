@@ -137,6 +137,18 @@ To enable this UI set the environment variable `ENABLE_UI` to `true`.
 After a restart of the application the UI can be accessed at `http://localhost:3000/` (or any other URL that allows you
 to reach the container).
 
+### Token settings in UI
+
+When UI is enabled, the page also includes a **Settings** section where you can update:
+
+- `FIREFLY_PERSONAL_TOKEN`
+- `OPENAI_API_KEY`
+
+The plugin saves these UI-updated values to a local settings file (default: `./storage/local-settings.json`) and uses
+them immediately for new requests. This allows local token updates without rebuilding the container.
+
+If both UI and environment variables provide values, UI-saved values take precedence.
+
 ## Adjust Tag name
 
 The application automatically sets the tag "AI categorized" on every transaction that was processed and a category could
@@ -156,3 +168,4 @@ If you have to run the application on a different port than the default port `30
 - `ENABLE_UI`: If the user interface should be enabled. (Default: `false`)
 - `FIREFLY_TAG`: The tag to assign to the processed transactions. (Default: `AI categorized`)
 - `PORT`: The port where the application listens. (Default: `3000`)
+- `SETTINGS_FILE_PATH`: Optional path for local UI settings storage file. (Default: `./storage/local-settings.json`)

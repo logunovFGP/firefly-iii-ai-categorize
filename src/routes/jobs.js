@@ -1,19 +1,13 @@
 import { Router } from "express";
+import { handleRouteError } from "../util.js";
 
 export default function jobsRoutes({ jobList, merchantMemory, firefly, categoriesCache }) {
     const router = Router();
-
-    function handleError(res, error) {
-        if (error?.statusCode) {
-            return res.status(error.statusCode).json({ error: error.message });
-        }
-        console.error(error);
-        res.status(500).json({ error: error.message });
-    }
+    const handleError = handleRouteError;
 
     router.get("/jobs", (req, res) => {
-        const limit = parseInt(req.query.limit) || 50;
-        const offset = parseInt(req.query.offset) || 0;
+        const limit = Math.min(parseInt(req.query.limit) || 50, 500);
+        const offset = Math.max(parseInt(req.query.offset) || 0, 0);
         res.json(jobList.getJobs(limit, offset));
     });
 

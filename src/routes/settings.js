@@ -1,17 +1,10 @@
 import { Router } from "express";
-import { getConfigVariable } from "../util.js";
+import { getConfigVariable, handleRouteError } from "../util.js";
 
 export default function settingsRoutes({ configStore, secretStore, categoriesCache, merchantMemory, firefly, fireflyStatus, PROVIDER_MODELS, createProvider }) {
     const router = Router();
     const state = { fireflyStatus };
-
-    function handleError(res, error) {
-        if (error?.statusCode) {
-            return res.status(error.statusCode).json({ error: error.message });
-        }
-        console.error(error);
-        res.status(500).json({ error: error.message });
-    }
+    const handleError = handleRouteError;
 
     router.get("/settings", (req, res) => {
         const settings = configStore.getPublicSettings();

@@ -145,6 +145,10 @@ export default class App {
             console.log(`Application running on port ${this.#PORT}`);
         });
 
+        // Expose for graceful shutdown
+        this._server = server;
+        this._database = database;
+
         // Socket.IO auth
         io.use((socket, next) => {
             const configuredToken = configStore.getValue("CATEGORIZER_API_TOKEN");

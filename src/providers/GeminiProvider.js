@@ -51,6 +51,34 @@ export default class GeminiProvider extends AiProvider {
         });
     }
 
+    async semanticDedup(existingCategories, discoveredCategories) {
+        const prompt = this._generateSemanticDedupPrompt(existingCategories, discoveredCategories);
+        return this._withRetry(async () => {
+            const model = this.#genAI.getGenerativeModel({
+                model: this._model,
+                systemInstruction: AiProvider.SYSTEM_PROMPT_SEMANTIC_DEDUP,
+                generationConfig: { responseMimeType: "application/json" },
+            });
+            const result = await model.generateContent(prompt);
+            const raw = result.response.text().trim();
+            return this._parseSemanticDedupResponse(raw);
+        });
+    }
+
+    async classifyBatchResearch(categories, transactions) {
+        const prompt = this._generateResearchPrompt(categories, transactions);
+        return this._withRetry(async () => {
+            const model = this.#genAI.getGenerativeModel({
+                model: this._model,
+                systemInstruction: AiProvider.SYSTEM_PROMPT_RESEARCH,
+                generationConfig: { responseMimeType: "application/json" },
+            });
+            const result = await model.generateContent(prompt);
+            const raw = result.response.text().trim();
+            return this._parseBatchResponse(raw, categories, transactions);
+        });
+    }
+
     async testConnection() {
         try {
             const model = this.#genAI.getGenerativeModel({ model: this._model });

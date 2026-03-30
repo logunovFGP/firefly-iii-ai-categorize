@@ -50,7 +50,43 @@ export default class OpenAiProvider extends AiProvider {
                     { role: "user", content: prompt },
                 ],
                 temperature: 0.1,
-                max_tokens: Math.max(100, transactions.length * 30),
+                max_tokens: Math.max(200, transactions.length * 50),
+                response_format: { type: "json_object" },
+            });
+            const raw = response.choices[0].message.content.trim();
+            return this._parseBatchResponse(raw, categories, transactions);
+        });
+    }
+
+    async semanticDedup(existingCategories, discoveredCategories) {
+        const prompt = this._generateSemanticDedupPrompt(existingCategories, discoveredCategories);
+        return this._withRetry(async () => {
+            const response = await this.#client.chat.completions.create({
+                model: this._model,
+                messages: [
+                    { role: "system", content: AiProvider.SYSTEM_PROMPT_SEMANTIC_DEDUP },
+                    { role: "user", content: prompt },
+                ],
+                temperature: 0.1,
+                max_tokens: Math.max(500, (existingCategories.length + discoveredCategories.length) * 40),
+                response_format: { type: "json_object" },
+            });
+            const raw = response.choices[0].message.content.trim();
+            return this._parseSemanticDedupResponse(raw);
+        });
+    }
+
+    async classifyBatchResearch(categories, transactions) {
+        const prompt = this._generateResearchPrompt(categories, transactions);
+        return this._withRetry(async () => {
+            const response = await this.#client.chat.completions.create({
+                model: this._model,
+                messages: [
+                    { role: "system", content: AiProvider.SYSTEM_PROMPT_RESEARCH },
+                    { role: "user", content: prompt },
+                ],
+                temperature: 0.3,
+                max_tokens: Math.max(300, transactions.length * 80),
                 response_format: { type: "json_object" },
             });
             const raw = response.choices[0].message.content.trim();

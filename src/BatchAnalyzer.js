@@ -1,4 +1,4 @@
-import { normalizeMerchantName, mapConcurrent, findCategoryDuplicates, mergeProposals } from "./util.js";
+import { mapConcurrent, findCategoryDuplicates, mergeProposals } from "./util.js";
 
 export default class BatchAnalyzer {
     #fireflyService;
@@ -30,7 +30,6 @@ export default class BatchAnalyzer {
         const SEED_BATCHES = 3;
 
         const proposals = [];
-        const unmatchedMerchants = {};
         let skipped = 0;
         let processed = 0;
         let errorCount = 0;
@@ -60,9 +59,14 @@ export default class BatchAnalyzer {
         const processChunkResults = (batchResults, chunk) => {
             batchResults.forEach((result, j) => {
                 const item = chunk[j];
-                // Track new AI suggestions for growing category list
-                if (result.category) knownCategories.add(result.category);
-                if (result.response && typeof result.response === "string") knownCategories.add(result.response);
+                // Track new AI suggestions for growing category list (only clean strings, not raw JSON)
+                if (result.category && typeof result.category === "string") {
+                    knownCategories.add(result.category);
+                }
+                if (result.response && typeof result.response === "string"
+                    && result.response.length < 80 && !result.response.startsWith("[") && !result.response.startsWith("{")) {
+                    knownCategories.add(result.response);
+                }
 
                 if (result.category && (categories.has(result.category) || knownCategories.has(result.category))) {
                     proposals.push({
@@ -76,10 +80,6 @@ export default class BatchAnalyzer {
                         proposedCategory: result.response || null, categoryId: null,
                         confidence: result.confidence, source: result.source, isNewCategory: true, needsReview: true,
                     });
-                    const normName = normalizeMerchantName(item.destinationName);
-                    if (!unmatchedMerchants[normName]) unmatchedMerchants[normName] = { count: 0, rawName: item.destinationName, aiSuggestions: [] };
-                    unmatchedMerchants[normName].count++;
-                    if (result.response) unmatchedMerchants[normName].aiSuggestions.push(result.response);
                 }
             });
         };
@@ -125,9 +125,105 @@ export default class BatchAnalyzer {
             });
         }
 
-        // Phase C: Post-analysis category dedup
-        const allProposed = [...new Set(proposals.map(p => p.proposedCategory).filter(Boolean))];
+        // Phase C: Post-analysis category dedup + summary
         const existingNames = Array.from(categories.keys());
+        const postProcessed = await this.#postProcessProposals(proposals, existingNames, onProgress);
+        console.log(`analyze() final: duplicates=${postProcessed.duplicates?.length}, autoMerged=${postProcessed.autoMerged}, discovered=${postProcessed.discoveredCategories?.length}`);
+
+        return {
+            totalTransactions: transactions.length,
+            totalProposals: postProcessed.proposals.length,
+            skipped, errors: errorCount,
+            ...postProcessed,
+        };
+    }
+
+    async retryUnmatched(previousProposals, onProgress = null) {
+        const unmatched = previousProposals.filter(p => !p.proposedCategory);
+        if (unmatched.length === 0) {
+            return { totalRetried: 0, newlyMatched: 0, proposals: previousProposals };
+        }
+
+        const categories = await this.#categoriesCache.getCategories();
+        const batchSize = this.#configStore?.getBatchClassifySize?.() || 20;
+
+        // Build known categories from Firefly + first-pass discoveries
+        const knownCategories = new Set(categories.keys());
+        for (const p of previousProposals) {
+            if (p.proposedCategory) knownCategories.add(p.proposedCategory);
+        }
+
+        const batches = [];
+        for (let i = 0; i < unmatched.length; i += batchSize) {
+            batches.push(unmatched.slice(i, i + batchSize));
+        }
+
+        if (onProgress) onProgress({ phase: "research", processed: 0, total: unmatched.length, current: `Researching ${unmatched.length} unmatched in ${batches.length} batches` });
+
+        let processed = 0;
+        let errorCount = 0;
+        let newlyMatched = 0;
+        const researchResults = new Map();
+
+        for (let i = 0; i < batches.length; i++) {
+            const chunk = batches[i];
+            try {
+                const batchResults = await this.#classificationEngine.classifyBatchResearch(
+                    chunk.map(c => ({ destinationName: c.destinationName, description: c.description })),
+                    { extraCategories: [...knownCategories] }
+                );
+                batchResults.forEach((result, j) => {
+                    const item = chunk[j];
+                    if (result.category) {
+                        knownCategories.add(result.category);
+                        newlyMatched++;
+                        researchResults.set(item.fireflyTxnId, {
+                            ...item, proposedCategory: result.category,
+                            categoryId: categories.get(result.category) || null,
+                            confidence: result.confidence, source: result.source,
+                            isNewCategory: !categories.has(result.category),
+                        });
+                    } else if (result.response && typeof result.response === "string" && result.response.length < 80) {
+                        newlyMatched++;
+                        researchResults.set(item.fireflyTxnId, {
+                            ...item, proposedCategory: result.response,
+                            categoryId: null, confidence: result.confidence,
+                            source: result.source, isNewCategory: true, needsReview: true,
+                        });
+                    }
+                });
+            } catch (err) {
+                errorCount += chunk.length;
+            }
+            processed += chunk.length;
+            if (onProgress) onProgress({ phase: "research", processed, total: unmatched.length, errors: errorCount, current: `Research batch ${i + 1}/${batches.length}` });
+        }
+
+        // Merge: replace null proposals with research results
+        const mergedProposals = previousProposals.map(p => {
+            if (!p.proposedCategory && researchResults.has(p.fireflyTxnId)) {
+                return researchResults.get(p.fireflyTxnId);
+            }
+            return p;
+        });
+
+        const existingNames = Array.from(categories.keys());
+        const postProcessed = await this.#postProcessProposals(mergedProposals, existingNames, onProgress);
+
+        return {
+            ...postProcessed,
+            totalTransactions: previousProposals.length,
+            totalProposals: postProcessed.proposals.length,
+            totalRetried: unmatched.length,
+            newlyMatched,
+            errors: errorCount,
+            pass: 2,
+        };
+    }
+
+    async #postProcessProposals(proposals, existingNames, onProgress = null) {
+        // Step 1: Formatting dedup (fast, no AI)
+        const allProposed = [...new Set(proposals.map(p => p.proposedCategory).filter(Boolean))];
         const duplicates = findCategoryDuplicates(allProposed, existingNames);
 
         let mergedProposals = proposals;
@@ -146,21 +242,94 @@ export default class BatchAnalyzer {
             mergedProposals = mergeProposals(proposals, autoMergeMap);
         }
 
-        // New category proposals
-        const newCategoryProposals = [];
-        for (const [normName, data] of Object.entries(unmatchedMerchants)) {
-            if (data.count >= 3) {
-                newCategoryProposals.push({
-                    merchantName: data.rawName, normalizedName: normName,
-                    transactionCount: data.count,
-                    suggestedCategoryName: this.#mostCommon(data.aiSuggestions) || data.rawName,
-                });
+        // Step 2: Semantic dedup (AI-powered)
+        const allProposedAfterFormat = [...new Set(mergedProposals.map(p => p.proposedCategory).filter(Boolean))];
+        const discoveredOnly = allProposedAfterFormat.filter(c => !existingNames.includes(c));
+        console.log(`Semantic dedup: ${discoveredOnly.length} discovered categories, ${existingNames.length} existing`);
+
+        if (discoveredOnly.length > 1) {
+            if (onProgress) onProgress({ phase: "semantic-dedup", message: "Running AI semantic deduplication..." });
+            try {
+                console.log("Calling semanticDedup with categories:", discoveredOnly.slice(0, 10).join(", "), "...");
+                const semanticGroups = await this.#classificationEngine.semanticDedup(discoveredOnly, existingNames);
+                console.log(`Semantic dedup returned ${semanticGroups.length} groups:`, JSON.stringify(semanticGroups).slice(0, 500));
+                for (const group of semanticGroups) {
+                    const existingMatch = group.variants.find(v => existingNames.includes(v));
+                    if (existingMatch || existingNames.includes(group.canonical)) {
+                        const canonical = existingMatch || group.canonical;
+                        for (const v of group.variants) {
+                            if (v !== canonical) autoMergeMap[v.toLowerCase()] = canonical;
+                        }
+                    } else {
+                        needsUserReview.push({
+                            variants: group.variants,
+                            recommended: group.canonical,
+                            reason: group.reason,
+                            source: "semantic-ai",
+                        });
+                    }
+                }
+                console.log(`After semantic dedup: ${needsUserReview.length} groups for user review, ${Object.keys(autoMergeMap).length} auto-merged`);
+                for (const r of needsUserReview) console.log(`  Review group: [${r.variants.join(", ")}] → recommended: "${r.recommended}"`);
+                mergedProposals = mergeProposals(mergedProposals, autoMergeMap);
+            } catch (err) {
+                console.error("Semantic dedup failed, continuing without:", err.message, err.stack);
             }
         }
 
-        // Summary
+        // Step 3: Deterministic derived fields (shared with applyMerge)
+        const derived = this.#computeDerivedFields(mergedProposals, existingNames);
+
+        return {
+            ...derived,
+            duplicates: needsUserReview,
+            autoMerged: Object.keys(autoMergeMap).length,
+        };
+    }
+
+    /** Deterministic post-processing: case-insensitive dedup, newCategoryProposals, summary. No AI calls. */
+    #computeDerivedFields(proposals, existingNames) {
+        const rawCategories = proposals
+            .map(p => p.proposedCategory)
+            .filter(c => c && typeof c === "string" && c.length < 100 && !c.startsWith("[") && !c.startsWith("{"));
+
+        const dedupMap = {};
+        const uniqueCategories = [];
+        for (const cat of rawCategories) {
+            const key = cat.toLowerCase().replace(/[\s\-_]+/g, " ").trim();
+            if (!dedupMap[key]) { dedupMap[key] = cat; uniqueCategories.push(cat); }
+        }
+
+        const remapLookup = {};
+        for (const cat of rawCategories) {
+            const key = cat.toLowerCase().replace(/[\s\-_]+/g, " ").trim();
+            remapLookup[cat] = dedupMap[key];
+        }
+        const dedupedProposals = proposals.map(p => {
+            if (p.proposedCategory && remapLookup[p.proposedCategory]) {
+                return { ...p, proposedCategory: remapLookup[p.proposedCategory] };
+            }
+            return p;
+        });
+
+        const dedupRemaps = [];
+        for (const cat of rawCategories) {
+            const canonical = remapLookup[cat];
+            if (canonical && canonical !== cat) dedupRemaps.push({ from: cat, to: canonical });
+        }
+        const dedupRemapsUnique = [...new Map(dedupRemaps.map(r => [`${r.from}→${r.to}`, r])).values()];
+
+        const newCategoryProposals = uniqueCategories
+            .filter(c => !existingNames.includes(c))
+            .map(cat => ({
+                suggestedCategoryName: cat,
+                transactionCount: dedupedProposals.filter(p => p.proposedCategory === cat).length,
+            }))
+            .filter(p => p.transactionCount > 0)
+            .sort((a, b) => b.transactionCount - a.transactionCount);
+
         const categoryGroups = {};
-        for (const p of mergedProposals) {
+        for (const p of dedupedProposals) {
             const cat = p.proposedCategory || "(unmatched)";
             if (!categoryGroups[cat]) categoryGroups[cat] = { count: 0, merchants: new Set() };
             categoryGroups[cat].count++;
@@ -171,21 +340,45 @@ export default class BatchAnalyzer {
             merchants: Array.from(data.merchants).slice(0, 10),
         }));
 
+        const uncategorized = dedupedProposals.filter(p => !p.proposedCategory).length;
+
         return {
-            totalTransactions: transactions.length, totalProposals: mergedProposals.length,
-            skipped, errors: errorCount,
-            proposals: mergedProposals, newCategoryProposals, summary,
+            proposals: dedupedProposals, newCategoryProposals, summary,
             existingCategories: existingNames,
-            duplicates: needsUserReview,
-            autoMerged: Object.keys(autoMergeMap).length,
+            dedupRemaps: dedupRemapsUnique,
+            discoveredCategories: uniqueCategories,
+            uncategorized,
         };
+    }
+
+    /** Server-side merge: apply user's merge map and recalculate all derived fields. */
+    applyMergeMap(proposals, existingCategories, mergeMap) {
+        const merged = mergeProposals(proposals, mergeMap);
+        return this.#computeDerivedFields(merged, existingCategories);
     }
 
     async apply(approvedProposals, newCategoriesToCreate = [], onProgress = null) {
         const toCreate = [...new Set(newCategoriesToCreate.map(c => c.trim()).filter(Boolean))];
+        const existingBefore = await this.#categoriesCache.getCategories();
+        const categoriesCreated = [];
+        const categoriesExisted = [];
+
         for (const catName of toCreate) {
-            try { await this.#fireflyService.createCategory(catName); }
-            catch (error) { console.error(`Failed to create category "${catName}": ${error.message}`); }
+            if (existingBefore.has(catName)) {
+                categoriesExisted.push(catName);
+                continue;
+            }
+            try {
+                await this.#fireflyService.createCategory(catName);
+                categoriesCreated.push(catName);
+            } catch (error) {
+                console.error(`Failed to create category "${catName}": ${error.message}`);
+                categoriesExisted.push(catName); // may already exist via race
+            }
+        }
+
+        if (onProgress && toCreate.length > 0) {
+            onProgress({ phase: "creating-categories", created: categoriesCreated.length, existed: categoriesExisted.length, total: toCreate.length });
         }
 
         this.#categoriesCache.invalidate();
@@ -193,10 +386,13 @@ export default class BatchAnalyzer {
         let applied = 0;
         let failed = 0;
 
+        let skippedNull = 0;
         for (const proposal of approvedProposals) {
+            if (!proposal.proposedCategory) { skippedNull++; continue; }
             const categoryId = categories.get(proposal.proposedCategory);
             if (!categoryId) {
                 failed++;
+                console.warn(`Apply: category "${proposal.proposedCategory}" not found in Firefly for txn ${proposal.fireflyTxnId}`);
                 if (onProgress) onProgress({ applied, failed, total: approvedProposals.length, current: proposal.destinationName, lastError: `Category "${proposal.proposedCategory}" not found` });
                 continue;
             }
@@ -217,13 +413,8 @@ export default class BatchAnalyzer {
             }
             if (onProgress) onProgress({ applied, failed, total: approvedProposals.length, current: proposal.destinationName });
         }
-        return { applied, failed, total: approvedProposals.length };
+        if (skippedNull > 0) console.warn(`Apply: skipped ${skippedNull} proposals with null category`);
+        return { applied, failed, skippedNull, total: approvedProposals.length, categoriesCreated, categoriesExisted };
     }
 
-    #mostCommon(arr) {
-        if (!arr.length) return null;
-        const freq = {};
-        for (const item of arr) { freq[item] = (freq[item] || 0) + 1; }
-        return Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0];
-    }
 }

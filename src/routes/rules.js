@@ -1,15 +1,9 @@
 import { Router } from "express";
+import { handleRouteError } from "../util.js";
 
 export default function rulesRoutes({ configStore, keywordRules }) {
     const router = Router();
-
-    function handleError(res, error) {
-        if (error?.statusCode) {
-            return res.status(error.statusCode).json({ error: error.message });
-        }
-        console.error(error);
-        res.status(500).json({ error: error.message });
-    }
+    const handleError = handleRouteError;
 
     router.get("/rules", (req, res) => {
         res.json(configStore.getKeywordRules());

@@ -1,4 +1,4 @@
-import { createProvider } from "./providers/ProviderRegistry.js";
+import { createProvider, PROVIDER_MODELS } from "./providers/ProviderRegistry.js";
 import { matchCategory } from "./util.js";
 
 export default class ClassificationEngine {
@@ -129,9 +129,17 @@ export default class ClassificationEngine {
             needsAI.push(t);
         }
 
-        // Ensure crypto categories exist
-        for (const catName of cryptoEnsureSet) {
-            await this.#categoriesCache.ensureCategory(catName);
+        // Ensure crypto categories exist, then update categoryId in prefiltered results
+        if (cryptoEnsureSet.size > 0) {
+            for (const catName of cryptoEnsureSet) {
+                await this.#categoriesCache.ensureCategory(catName);
+            }
+            const refreshed = await this.#categoriesCache.getCategories();
+            for (const [t, result] of results.entries()) {
+                if (result.categoryId === null && result.category && refreshed.has(result.category)) {
+                    results.set(t, { ...result, categoryId: refreshed.get(result.category) });
+                }
+            }
         }
 
         if (needsAI.length > 0) {
@@ -179,5 +187,62 @@ export default class ClassificationEngine {
         }
 
         return transactionList.map(t => results.get(t) || { category: null, confidence: 0, source: "error:no-result", needsReview: true });
+    }
+
+    async semanticDedup(discoveredCategories, existingCategories) {
+        const { provider: providerName } = this.#configStore.getActiveProvider();
+        const apiKey = this.#configStore.getProviderToken(providerName);
+        if (!apiKey) { console.warn("semanticDedup: no API key"); return []; }
+
+        const researchModel = PROVIDER_MODELS[providerName]?.researchModel
+            || PROVIDER_MODELS[providerName]?.defaultModel;
+        console.log(`semanticDedup: using ${providerName}/${researchModel}, ${discoveredCategories.length} discovered, ${existingCategories.length} existing`);
+        const provider = createProvider(providerName, apiKey, researchModel);
+
+        try {
+            const result = await provider.semanticDedup(existingCategories, discoveredCategories);
+            console.log(`semanticDedup: returned ${result.length} groups`);
+            return result;
+        } catch (error) {
+            console.error(`Semantic dedup failed: ${error.message}`, error.stack);
+            return [];
+        }
+    }
+
+    async classifyBatchResearch(transactionList, { extraCategories = [] } = {}) {
+        const categories = await this.#categoriesCache.getCategories();
+        const categoryNames = [...new Set([...categories.keys(), ...extraCategories])];
+
+        const { provider: providerName } = this.#configStore.getActiveProvider();
+        const apiKey = this.#configStore.getProviderToken(providerName);
+        if (!apiKey) {
+            return transactionList.map(() => ({ category: null, confidence: 0, source: "error:no-api-key", needsReview: true }));
+        }
+
+        const researchModel = PROVIDER_MODELS[providerName]?.researchModel
+            || PROVIDER_MODELS[providerName]?.defaultModel;
+        const provider = createProvider(providerName, apiKey, researchModel);
+
+        try {
+            const batchResults = await provider.classifyBatchResearch(categoryNames, transactionList);
+            return batchResults.map((r) => {
+                const matched = matchCategory(r.category, categoryNames);
+                return {
+                    category: matched || null,
+                    categoryId: matched ? (categories.get(matched) || null) : null,
+                    confidence: matched ? 0.80 : 0,
+                    source: `ai-research:${providerName}/${researchModel}`,
+                    response: r.response,
+                    needsReview: !matched,
+                };
+            });
+        } catch (error) {
+            console.error(`Research batch classification failed: ${error.message}`);
+            return transactionList.map(() => ({
+                category: null, confidence: 0,
+                source: `ai-research:${providerName}/${researchModel}`,
+                needsReview: true, error: error.message,
+            }));
+        }
     }
 }
