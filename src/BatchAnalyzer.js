@@ -1,4 +1,4 @@
-import { mapConcurrent, findCategoryDuplicates, mergeProposals } from "./util.js";
+import { mapConcurrent, findCategoryDuplicates, mergeProposals, normalizeCategoryKey } from "./util.js";
 
 export default class BatchAnalyzer {
     #fireflyService;
@@ -298,13 +298,13 @@ export default class BatchAnalyzer {
         const dedupMap = {};
         const uniqueCategories = [];
         for (const cat of rawCategories) {
-            const key = cat.toLowerCase().replace(/[\s\-_]+/g, " ").trim();
+            const key = normalizeCategoryKey(cat);
             if (!dedupMap[key]) { dedupMap[key] = cat; uniqueCategories.push(cat); }
         }
 
         const remapLookup = {};
         for (const cat of rawCategories) {
-            const key = cat.toLowerCase().replace(/[\s\-_]+/g, " ").trim();
+            const key = normalizeCategoryKey(cat);
             remapLookup[cat] = dedupMap[key];
         }
         const dedupedProposals = proposals.map(p => {
@@ -348,7 +348,7 @@ export default class BatchAnalyzer {
             proposals: dedupedProposals, newCategoryProposals, summary,
             existingCategories: existingNames,
             dedupRemaps: dedupRemapsUnique,
-            discoveredCategories: uniqueCategories,
+            discoveredCategories: uniqueCategories.filter(c => !existingNames.includes(c)),
             uncategorized,
         };
     }

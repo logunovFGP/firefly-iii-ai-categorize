@@ -42,14 +42,25 @@ export async function mapConcurrent(items, concurrency, fn, signal = null) {
     return results;
 }
 
+export function normalizeCategoryKey(name) {
+    return name.toLowerCase().replace(/[\s\-_]+/g, " ").trim();
+}
+
 export function findCategoryDuplicates(categoryNames, existingCategories = []) {
-    const existingLower = new Set(existingCategories.map(c => c.toLowerCase()));
+    // Group both proposed AND existing categories by normalized key
+    // so that formatting variants between them are detected
     const groups = {};
-    for (const cat of categoryNames) {
-        const key = cat.toLowerCase().replace(/[\s\-_]+/g, " ").trim();
+    for (const cat of existingCategories) {
+        const key = normalizeCategoryKey(cat);
         if (!groups[key]) groups[key] = [];
         if (!groups[key].includes(cat)) groups[key].push(cat);
     }
+    for (const cat of categoryNames) {
+        const key = normalizeCategoryKey(cat);
+        if (!groups[key]) groups[key] = [];
+        if (!groups[key].includes(cat)) groups[key].push(cat);
+    }
+    const existingLower = new Set(existingCategories.map(c => c.toLowerCase()));
     const duplicates = [];
     for (const variants of Object.values(groups)) {
         if (variants.length <= 1) continue;
