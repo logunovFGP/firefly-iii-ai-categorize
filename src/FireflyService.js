@@ -115,6 +115,54 @@ export default class FireflyService {
         return await response.json();
     }
 
+    /**
+     * Bulk-update categories and tags for up to 100 transactions in one request.
+     * Returns null if the endpoint doesn't exist (Firefly III not updated).
+     */
+    async bulkCategorize(items) {
+        const personalToken = this.#configStore.getValue("FIREFLY_PERSONAL_TOKEN", { required: true });
+        const response = await fetch(`${this.#BASE_URL}/api/v1/data/bulk/categorize`, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${personalToken}`,
+                "Content-Type": "application/json",
+                Accept: "application/json",
+            },
+            body: JSON.stringify({
+                transactions: items.map(it => ({
+                    transaction_group_id: parseInt(it.transactionGroupId, 10),
+                    category_name: it.categoryName,
+                    tag: it.tag || undefined,
+                })),
+            }),
+        });
+        if (!response.ok) {
+            if (response.status === 404) return null;
+            throw new FireflyException(response.status, response, await response.text());
+        }
+        return await response.json();
+    }
+
+    /**
+     * Probe whether the bulk categorize endpoint exists.
+     * Sends an empty array which triggers 422 (exists) vs 404 (missing).
+     */
+    async checkBulkCategorizeSupport() {
+        const personalToken = this.#configStore.getValue("FIREFLY_PERSONAL_TOKEN", { required: true });
+        try {
+            const response = await fetch(`${this.#BASE_URL}/api/v1/data/bulk/categorize`, {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${personalToken}`,
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                },
+                body: JSON.stringify({ transactions: [] }),
+            });
+            return response.status !== 404;
+        } catch { return false; }
+    }
+
     async getTransaction(transactionId) {
         const personalToken = this.#configStore.getValue("FIREFLY_PERSONAL_TOKEN", { required: true });
         const response = await fetch(`${this.#BASE_URL}/api/v1/transactions/${transactionId}`, {

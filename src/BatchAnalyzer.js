@@ -17,7 +17,7 @@ export default class BatchAnalyzer {
         this.#configStore = configStore;
     }
 
-    async analyze(onProgress = null) {
+    async analyze(onProgress = null, signal = null) {
         // Phase: Fetch
         if (onProgress) onProgress({ phase: "fetching", message: "Fetching transactions from Firefly..." });
         const transactions = await this.#fireflyService.getUncategorizedTransactions((p) => {
@@ -87,6 +87,7 @@ export default class BatchAnalyzer {
         // Phase A: Sequential seed batches (build category vocabulary)
         const seedCount = Math.min(SEED_BATCHES, batches.length);
         for (let i = 0; i < seedCount; i++) {
+            if (signal?.aborted) break;
             const chunk = batches[i];
             try {
                 const batchResults = await this.#classificationEngine.classifyBatch(
@@ -122,7 +123,7 @@ export default class BatchAnalyzer {
                 processed += chunk.length;
                 completedParallel++;
                 if (onProgress) onProgress({ phase: "classifying", processed, total, skipped, errors: errorCount, current: `Parallel ${completedParallel}/${remaining.length} (${concurrency} workers)`, vocabulary: { initial: initialCategoryList, current: [...knownCategories].sort() } });
-            });
+            }, signal);
         }
 
         // Phase C: Post-analysis category dedup + summary
@@ -138,7 +139,7 @@ export default class BatchAnalyzer {
         };
     }
 
-    async retryUnmatched(previousProposals, onProgress = null) {
+    async retryUnmatched(previousProposals, onProgress = null, signal = null) {
         const unmatched = previousProposals.filter(p => !p.proposedCategory);
         if (unmatched.length === 0) {
             return { totalRetried: 0, newlyMatched: 0, proposals: previousProposals };
@@ -166,6 +167,7 @@ export default class BatchAnalyzer {
         const researchResults = new Map();
 
         for (let i = 0; i < batches.length; i++) {
+            if (signal?.aborted) break;
             const chunk = batches[i];
             try {
                 const batchResults = await this.#classificationEngine.classifyBatchResearch(
@@ -357,13 +359,14 @@ export default class BatchAnalyzer {
         return this.#computeDerivedFields(merged, existingCategories);
     }
 
-    async apply(approvedProposals, newCategoriesToCreate = [], onProgress = null) {
+    async apply(approvedProposals, newCategoriesToCreate = [], onProgress = null, signal = null) {
         const toCreate = [...new Set(newCategoriesToCreate.map(c => c.trim()).filter(Boolean))];
         const existingBefore = await this.#categoriesCache.getCategories();
         const categoriesCreated = [];
         const categoriesExisted = [];
 
         for (const catName of toCreate) {
+            if (signal?.aborted) break;
             if (existingBefore.has(catName)) {
                 categoriesExisted.push(catName);
                 continue;
@@ -373,7 +376,7 @@ export default class BatchAnalyzer {
                 categoriesCreated.push(catName);
             } catch (error) {
                 console.error(`Failed to create category "${catName}": ${error.message}`);
-                categoriesExisted.push(catName); // may already exist via race
+                categoriesExisted.push(catName);
             }
         }
 
@@ -383,38 +386,91 @@ export default class BatchAnalyzer {
 
         this.#categoriesCache.invalidate();
         const categories = await this.#categoriesCache.getCategories();
+
+        // Filter valid proposals
+        const validProposals = approvedProposals.filter(p => {
+            if (!p.proposedCategory) return false;
+            if (this.#jobList.isAlreadyProcessed(p.fireflyTxnId)) return false;
+            if (!categories.get(p.proposedCategory)) return false;
+            return true;
+        });
+        const skippedNull = approvedProposals.filter(p => !p.proposedCategory).length;
+
+        // Determine bulk support
+        const bulkSupported = await this.#fireflyService.checkBulkCategorizeSupport();
+        const mode = bulkSupported ? "bulk" : "legacy";
+        console.log(`Apply: using ${mode} mode for ${validProposals.length} proposals`);
+
         let applied = 0;
         let failed = 0;
+        const tagValue = this.#configStore?.getValue?.("FIREFLY_TAG") || "AI categorized";
 
-        let skippedNull = 0;
-        for (const proposal of approvedProposals) {
-            if (!proposal.proposedCategory) { skippedNull++; continue; }
-            const categoryId = categories.get(proposal.proposedCategory);
-            if (!categoryId) {
-                failed++;
-                console.warn(`Apply: category "${proposal.proposedCategory}" not found in Firefly for txn ${proposal.fireflyTxnId}`);
-                if (onProgress) onProgress({ applied, failed, total: approvedProposals.length, current: proposal.destinationName, lastError: `Category "${proposal.proposedCategory}" not found` });
-                continue;
-            }
-            if (this.#jobList.isAlreadyProcessed(proposal.fireflyTxnId)) continue;
+        if (bulkSupported) {
+            // Bulk mode: chunk into groups of 50
+            const CHUNK_SIZE = 50;
+            for (let i = 0; i < validProposals.length; i += CHUNK_SIZE) {
+                if (signal?.aborted) break;
+                const chunk = validProposals.slice(i, i + CHUNK_SIZE);
+                const items = chunk.map(p => ({
+                    transactionGroupId: p.fireflyTxnId,
+                    categoryName: p.proposedCategory,
+                    tag: tagValue,
+                }));
 
-            const job = this.#jobList.createJob({ destinationName: proposal.destinationName, description: proposal.description, fireflyTransactionId: proposal.fireflyTxnId });
-            try {
-                const txnData = await this.#fireflyService.getTransaction(proposal.fireflyTxnId);
-                if (!txnData) { this.#jobList.setJobError(job.id, "Transaction not found"); failed++; continue; }
-                await this.#fireflyService.setCategory(proposal.fireflyTxnId, txnData.data.attributes.transactions, categoryId);
-                this.#merchantMemory.learn(proposal.destinationName, { category: proposal.proposedCategory, categoryId, confidence: proposal.confidence || 0.85, source: "batch:approved" });
-                this.#jobList.updateJobResult(job.id, { category: proposal.proposedCategory, categoryId, confidence: proposal.confidence || 0.85, source: "batch:approved", provider: null, model: null, needsReview: false });
-                applied++;
-            } catch (error) {
-                this.#jobList.setJobError(job.id, error.message); failed++;
-                if (onProgress) onProgress({ applied, failed, total: approvedProposals.length, current: proposal.destinationName, lastError: error.message });
-                continue;
+                try {
+                    const result = await this.#fireflyService.bulkCategorize(items);
+                    if (!result) {
+                        // Endpoint returned null (unexpected 404 after probe) — abort bulk, switch to legacy
+                        console.warn("Bulk endpoint returned 404 unexpectedly, cannot continue in bulk mode");
+                        failed += chunk.length;
+                        continue;
+                    }
+                    applied += result.applied;
+                    failed += result.failed;
+
+                    // Record in jobList and merchantMemory
+                    for (const p of chunk) {
+                        const categoryId = categories.get(p.proposedCategory);
+                        const job = this.#jobList.createJob({ destinationName: p.destinationName, description: p.description, fireflyTransactionId: p.fireflyTxnId });
+                        this.#merchantMemory.learn(p.destinationName, { category: p.proposedCategory, categoryId, confidence: p.confidence || 0.85, source: "batch:approved" });
+                        this.#jobList.updateJobResult(job.id, { category: p.proposedCategory, categoryId, confidence: p.confidence || 0.85, source: "batch:approved", provider: null, model: null, needsReview: false });
+                    }
+                } catch (error) {
+                    failed += chunk.length;
+                    console.error(`Bulk apply chunk failed: ${error.message}`);
+                }
+
+                if (onProgress) onProgress({ applied, failed, total: validProposals.length, current: `Chunk ${Math.floor(i / CHUNK_SIZE) + 1}/${Math.ceil(validProposals.length / CHUNK_SIZE)}` });
             }
-            if (onProgress) onProgress({ applied, failed, total: approvedProposals.length, current: proposal.destinationName });
+        } else {
+            // Legacy mode: per-transaction GET+PUT (fallback)
+            let progressCounter = 0;
+            for (const proposal of validProposals) {
+                if (signal?.aborted) break;
+                const categoryId = categories.get(proposal.proposedCategory);
+                const job = this.#jobList.createJob({ destinationName: proposal.destinationName, description: proposal.description, fireflyTransactionId: proposal.fireflyTxnId });
+                try {
+                    const txnData = await this.#fireflyService.getTransaction(proposal.fireflyTxnId);
+                    if (!txnData) { this.#jobList.setJobError(job.id, "Transaction not found"); failed++; continue; }
+                    await this.#fireflyService.setCategory(proposal.fireflyTxnId, txnData.data.attributes.transactions, categoryId);
+                    this.#merchantMemory.learn(proposal.destinationName, { category: proposal.proposedCategory, categoryId, confidence: proposal.confidence || 0.85, source: "batch:approved" });
+                    this.#jobList.updateJobResult(job.id, { category: proposal.proposedCategory, categoryId, confidence: proposal.confidence || 0.85, source: "batch:approved", provider: null, model: null, needsReview: false });
+                    applied++;
+                } catch (error) {
+                    this.#jobList.setJobError(job.id, error.message);
+                    failed++;
+                }
+                progressCounter++;
+                if (onProgress && progressCounter % 10 === 0) {
+                    onProgress({ applied, failed, total: validProposals.length, current: proposal.destinationName });
+                }
+            }
+            // Final progress event for legacy mode
+            if (onProgress) onProgress({ applied, failed, total: validProposals.length, current: "Complete" });
         }
+
         if (skippedNull > 0) console.warn(`Apply: skipped ${skippedNull} proposals with null category`);
-        return { applied, failed, skippedNull, total: approvedProposals.length, categoriesCreated, categoriesExisted };
+        return { applied, failed, skippedNull, total: approvedProposals.length, categoriesCreated, categoriesExisted, mode };
     }
 
 }

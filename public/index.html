@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Firefly III AI Categorizer</title>
-  <script type="module" crossorigin src="/assets/index-1E7UWzx1.js"></script>
+  <script type="module" crossorigin src="/assets/index-Z1g1tFw_.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-Dvz5Kv5B.css">
 </head>
 <body>
@@ -114,7 +114,7 @@
                 <button class="btn-primary" :disabled="$store.batch.isBusy" @click="$store.batch.startAnalysis()">
                     <span x-text="$store.batch.step === 'analyzing' ? 'Analyzing...' : 'Analyze Uncategorized'"></span>
                 </button>
-                <button class="btn-secondary btn-sm" x-show="$store.batch.step === 'analyzing'" @click="$store.batch.cancelAnalysis()">Cancel</button>
+                <button class="btn-secondary btn-sm" x-show="$store.batch.step === 'analyzing'" @click="$store.batch.cancelOperation()">Cancel</button>
             </div>
 
             <!-- STEP: ANALYZING -->
@@ -231,6 +231,7 @@
                     <!-- Retry Unmatched -->
                     <div x-show="$store.batch.hasUnmatched && $store.batch.step === 'review'" style="margin-top:var(--sp-2)">
                         <button class="btn-secondary btn-sm" @click="$store.batch.retryUnmatched()">Retry Unmatched with Research AI</button>
+                        <button class="btn-secondary btn-sm" x-show="$store.batch.step === 'retrying'" @click="$store.batch.cancelOperation()" style="margin-left:var(--sp-1)">Cancel</button>
                         <span class="text-xs text-muted" style="margin-left:var(--sp-2)">Uses a different prompt to identify unfamiliar merchants</span>
                     </div>
                     <div x-show="$store.batch.step === 'retrying'" class="progress-container" style="margin-top:var(--sp-2)">
@@ -263,7 +264,10 @@
 
                 <!-- Apply -->
                 <div class="btn-group">
-                    <button class="btn-success" :disabled="$store.batch.step !== 'review'" @click="$store.batch.applyAll()">Apply All Proposals</button>
+                    <button class="btn-success" :disabled="$store.batch.step !== 'review'" @click="$store.batch.applyAll()">
+                        <span x-text="$store.batch.step === 'applying' ? 'Applying...' : 'Apply All Proposals'"></span>
+                    </button>
+                    <button class="btn-secondary btn-sm" x-show="$store.batch.step === 'applying'" @click="$store.batch.cancelOperation()">Cancel</button>
                 </div>
             </div>
 

@@ -17,16 +17,28 @@ export function normalizeMerchantName(name) {
         .toUpperCase();
 }
 
-export async function mapConcurrent(items, concurrency, fn) {
+/**
+ * Run fn on each item with at most `concurrency` in-flight.
+ * Optional `signal` enables cooperative cancellation — up to `concurrency`
+ * in-flight items may complete after abort (each worker finishes its current
+ * await before checking the signal).
+ */
+export async function mapConcurrent(items, concurrency, fn, signal = null) {
     const results = new Array(items.length);
     let nextIndex = 0;
     async function worker() {
         while (nextIndex < items.length) {
+            if (signal?.aborted) break;
             const i = nextIndex++;
             results[i] = await fn(items[i], i);
         }
     }
     await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
+    if (signal?.aborted) {
+        const err = new Error("Operation cancelled");
+        err.name = "AbortError";
+        throw err;
+    }
     return results;
 }
 

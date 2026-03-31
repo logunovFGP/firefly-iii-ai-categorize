@@ -117,17 +117,20 @@ export function initBatchStore(Alpine) {
                 Alpine.store("toast").show(`Analysis complete: ${result.totalProposals} proposals`, "success");
                 this._enterMergeOrReview(result);
             } catch (err) {
-                Alpine.store("toast").show(err.message, "error");
+                if (err.message === "Cancelled") {
+                    Alpine.store("toast").show("Analysis cancelled", "info");
+                } else {
+                    Alpine.store("toast").show(err.message, "error");
+                }
                 this.step = null;
             } finally {
                 this._abortController = null;
             }
         },
 
-        cancelAnalysis() {
+        cancelOperation() {
             this._abortController?.abort();
             this._abortController = null;
-            this.step = null;
         },
 
         async confirmMerge() {
@@ -170,9 +173,11 @@ export function initBatchStore(Alpine) {
         async retryUnmatched() {
             if (!this.result?.proposals || this.isBusy) return;
             this.step = "retrying";
+            this._abortController = new AbortController();
             const startTime = Date.now();
             try {
                 const result = await streamSSE("/api/batch/retry-unmatched", "POST", { proposals: this.result.proposals }, {
+                    signal: this._abortController.signal,
                     onProgress: (p) => {
                         this.retryProgress = { ...p, elapsed: Date.now() - startTime, pct: p.total > 0 ? ((p.processed || 0) / p.total * 100) : 0 };
                     },
@@ -183,8 +188,14 @@ export function initBatchStore(Alpine) {
                 Alpine.store("toast").show(msg, result.newlyMatched > 0 ? "success" : "info");
                 this._enterMergeOrReview(result);
             } catch (err) {
-                Alpine.store("toast").show(err.message, "error");
+                if (err.message === "Cancelled") {
+                    Alpine.store("toast").show("Research cancelled", "info");
+                } else {
+                    Alpine.store("toast").show(err.message, "error");
+                }
                 this.step = "review";
+            } finally {
+                this._abortController = null;
             }
         },
 
@@ -192,11 +203,13 @@ export function initBatchStore(Alpine) {
             if (!this.result || this.isBusy) return;
             this.step = "applying";
             this.applyErrors = [];
+            this._abortController = new AbortController();
             const startTime = Date.now();
             const newCategories = Object.entries(this.newCategoryChecked).filter(([, v]) => v !== false).map(([k]) => k);
 
             try {
                 const r = await streamSSE("/api/batch/apply", "POST", { proposals: this.result.proposals, newCategories }, {
+                    signal: this._abortController.signal,
                     onProgress: (p) => {
                         if (p.lastError) this.applyErrors = [...this.applyErrors, `${p.current}: ${p.lastError}`];
                         this.applyProgress = { ...p, elapsed: Date.now() - startTime, pct: p.total > 0 ? ((p.applied || 0) / p.total * 100) : 0 };
@@ -211,10 +224,19 @@ export function initBatchStore(Alpine) {
                 Alpine.store("toast").show(`Applied ${r.applied} categorizations`, r.failed ? "info" : "success");
                 await Alpine.store("app").loadSettings();
                 await Alpine.store("app").loadMemory();
-            } catch (err) {
-                Alpine.store("toast").show(err.message, "error");
-            } finally {
                 this.step = "done";
+            } catch (err) {
+                if (err.message === "Cancelled") {
+                    const applied = this.applyProgress.applied || 0;
+                    const total = this.applyProgress.total || 0;
+                    Alpine.store("toast").show(`Cancelled. ${applied} of ${total} applied so far.`, "info");
+                    this.step = "review";
+                } else {
+                    Alpine.store("toast").show(err.message, "error");
+                    this.step = "done";
+                }
+            } finally {
+                this._abortController = null;
             }
         },
 
