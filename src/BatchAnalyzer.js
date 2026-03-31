@@ -428,12 +428,15 @@ export default class BatchAnalyzer {
                     applied += result.applied;
                     failed += result.failed;
 
-                    // Record in jobList and merchantMemory
+                    // Record in merchantMemory only — skip jobList during bulk apply
+                    // to avoid 100 Socket.IO events per chunk flooding the browser
                     for (const p of chunk) {
-                        const categoryId = categories.get(p.proposedCategory);
-                        const job = this.#jobList.createJob({ destinationName: p.destinationName, description: p.description, fireflyTransactionId: p.fireflyTxnId });
-                        this.#merchantMemory.learn(p.destinationName, { category: p.proposedCategory, categoryId, confidence: p.confidence || 0.85, source: "batch:approved" });
-                        this.#jobList.updateJobResult(job.id, { category: p.proposedCategory, categoryId, confidence: p.confidence || 0.85, source: "batch:approved", provider: null, model: null, needsReview: false });
+                        this.#merchantMemory.learn(p.destinationName, {
+                            category: p.proposedCategory,
+                            categoryId: categories.get(p.proposedCategory),
+                            confidence: p.confidence || 0.85,
+                            source: "batch:approved",
+                        });
                     }
                 } catch (error) {
                     failed += chunk.length;
@@ -444,20 +447,18 @@ export default class BatchAnalyzer {
             }
         } else {
             // Legacy mode: per-transaction GET+PUT (fallback)
+            // Skip jobList writes to avoid Socket.IO event flood (same as bulk mode)
             let progressCounter = 0;
             for (const proposal of validProposals) {
                 if (signal?.aborted) break;
                 const categoryId = categories.get(proposal.proposedCategory);
-                const job = this.#jobList.createJob({ destinationName: proposal.destinationName, description: proposal.description, fireflyTransactionId: proposal.fireflyTxnId });
                 try {
                     const txnData = await this.#fireflyService.getTransaction(proposal.fireflyTxnId);
-                    if (!txnData) { this.#jobList.setJobError(job.id, "Transaction not found"); failed++; continue; }
+                    if (!txnData) { failed++; continue; }
                     await this.#fireflyService.setCategory(proposal.fireflyTxnId, txnData.data.attributes.transactions, categoryId);
                     this.#merchantMemory.learn(proposal.destinationName, { category: proposal.proposedCategory, categoryId, confidence: proposal.confidence || 0.85, source: "batch:approved" });
-                    this.#jobList.updateJobResult(job.id, { category: proposal.proposedCategory, categoryId, confidence: proposal.confidence || 0.85, source: "batch:approved", provider: null, model: null, needsReview: false });
                     applied++;
                 } catch (error) {
-                    this.#jobList.setJobError(job.id, error.message);
                     failed++;
                 }
                 progressCounter++;

@@ -50,8 +50,8 @@ export default class FireflyService {
         const tag = getConfigVariable("FIREFLY_TAG", "AI categorized");
 
         const body = {
-            apply_rules: true,
-            fire_webhooks: true,
+            apply_rules: false,
+            fire_webhooks: false,
             transactions: [],
         }
 

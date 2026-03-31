@@ -8,7 +8,7 @@ export function initBatchStore(Alpine) {
         result: null,
         analyzeProgress: { phase: "", processed: 0, total: 0, skipped: 0, errors: 0, current: "", lastError: "", elapsed: 0, pct: 0 },
         analyzeErrors: [],
-        vocabulary: { initial: [], current: [], get added() { return this.current.filter(c => c && typeof c === "string" && c.length < 100 && !c.startsWith("[") && !c.startsWith("{") && !this.initial.includes(c)); } },
+        vocabulary: { initial: [], current: [], added: [] },
         mergeSelections: {},
         newCategoryChecked: {},
         applyProgress: { applied: 0, failed: 0, total: 0, current: "", elapsed: 0, pct: 0 },
@@ -16,6 +16,12 @@ export function initBatchStore(Alpine) {
         applyResult: null,
         retryProgress: { phase: "", processed: 0, total: 0, errors: 0, current: "", pct: 0 },
         _abortController: null,
+
+        _computeVocabulary(initial, current) {
+            const initialSet = new Set(initial);
+            const added = current.filter(c => c && typeof c === "string" && c.length < 100 && !c.startsWith("[") && !c.startsWith("{") && !initialSet.has(c));
+            return { initial, current, added };
+        },
 
         // --- Getters ---
         get hasResults() { return this.result?.proposals?.length > 0; },
@@ -92,7 +98,7 @@ export function initBatchStore(Alpine) {
             this.newCategoryChecked = {};
             this.applyResult = null;
             const existingCats = (Alpine.store("app").categories || []).map(c => c.name).sort();
-            this.vocabulary = { initial: existingCats, current: [...existingCats], get added() { return this.current.filter(c => c && typeof c === "string" && c.length < 100 && !c.startsWith("[") && !c.startsWith("{") && !this.initial.includes(c)); } };
+            this.vocabulary = this._computeVocabulary(existingCats, [...existingCats]);
             this._abortController = new AbortController();
             const startTime = Date.now();
 
@@ -108,7 +114,7 @@ export function initBatchStore(Alpine) {
                             this.analyzeProgress = { ...p, elapsed, pct: p.total > 0 ? ((p.processed || 0) / p.total * 100) : 0 };
                         }
                         if (p.vocabulary) {
-                            this.vocabulary = { initial: p.vocabulary.initial, current: p.vocabulary.current, get added() { return this.current.filter(c => c && typeof c === "string" && c.length < 100 && !c.startsWith("[") && !c.startsWith("{") && !this.initial.includes(c)); } };
+                            this.vocabulary = this._computeVocabulary(p.vocabulary.initial, p.vocabulary.current);
                         }
                     },
                 });
@@ -248,7 +254,7 @@ export function initBatchStore(Alpine) {
             this.applyResult = null;
             this.mergeSelections = {};
             this.newCategoryChecked = {};
-            this.vocabulary = { initial: [], current: [], get added() { return []; } };
+            this.vocabulary = { initial: [], current: [], added: [] };
         },
     });
 }
